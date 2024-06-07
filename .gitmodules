@@ -4,3 +4,6 @@
 [submodule "lib/forge-poc-templates"]
 	path = lib/forge-poc-templates
 	url = https://github.com/immunefi-team/forge-poc-templates
+[submodule "lib/solady"]
+	path = lib/solady
+	url = https://github.com/vectorized/solady
