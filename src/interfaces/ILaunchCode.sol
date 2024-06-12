@@ -3,7 +3,7 @@
 // validate data going in
 // only for public launch. staker launch is automated in launchpad
 
-interface LaunchCode {
+interface ILaunchCode {
     // creates the public auction for 
     function launch(address governance, uint256 tokensAuctioned, uint32 startDate, uint32 endDate) public returns(address);
     // check if custom launch template data is valid

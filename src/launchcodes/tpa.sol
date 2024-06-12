@@ -8,3 +8,25 @@
 // unclaimed xDAO tokens sent to treasury (or rolled into public auction)
 // Hve time deadline. If not complete by deadline, any BIO holder (>100,000) can purchase tokens
 // once sale complete then claimable by purchasers
+
+contract ProRata {
+
+    // Only function delegatecall'ed by Launchpad, rest are normal contract interactions
+    function launch() public {
+        // TODO OBJECTIVE: prorata split token amount between BIO Stakers.
+        // Contract needs to claim 
+        address claimContract = new ProRata();
+        claimContract.initialize();
+        return claimContract;
+    }
+
+    function initialize() public {
+        //  Proxy contract implementation for gas savings.
+        // 
+    }
+
+    function claim() public {
+        //  allow individual 
+
+    }
+}

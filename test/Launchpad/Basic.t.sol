@@ -1,23 +1,24 @@
-import "forge/std";
+import "forge-std/Test.sol";
+
 
 contract BasicLaunchpadTests is Test {
 
-    setup() {
+    function setup() public {
 
-    };
+    }
 
     /*
         bioDAO actions
     */
 
-    prove_submit_applicantID_increments(uint8 applicants) public {
+    function  prove_submit_applicantID_increments(uint8 applicants) public {
         for(uint i; i < applicants; i++) {
             assertEq(launchpad.nextApplicantId(), i);
             launchpad.submit(operator, bytes32(0));
         }
     }
 
-    prove_launch_statusMustBeCOMPLETED() public {
+    function  prove_launch_statusMustBeCOMPLETED() public {
         launchpad.submit(operator, bytes32(0));
         vm.expectRevert(launchpad.InvalidAppStatus.selector, launchpad.APPLICATION_STATUS.SUBMITTED, launchpad.APPLICATION_STATUS.COMPLETED);
 
@@ -48,7 +49,7 @@ contract BasicLaunchpadTests is Test {
     }
 
     // u would think right? But no! bc of scientist onboarding no address at time of application, proxies submit on their behalf.
-    // prove_submit_applicant_cant_reapply() public {
+    // function  prove_submit_applicant_cant_reapply() public {
     //     vm.prank();
     //     launchpad.submit();
 
@@ -57,21 +58,14 @@ contract BasicLaunchpadTests is Test {
     // }
 
 
-    prove_submit_applicant_cant_reapply() public {
-        vm.prank();
-        launchpad.submit();
-
-        vm.expectRevert(BaseLaunchpad.)
-    }
-
     /*
         Program Operator Actions
     */
 
     // TODO check Program rewards heavily
-    // test_setOperator_setsDefualtRewards (sets to right program + sets right amounts)
-    // test_setOperator_nextProgramIdIs1
-    // test_setOperator_capsMaxRewards (checks for reverts)
+    // function  test_setOperator_setsDefualtRewards (sets to right program + sets right amounts)
+    // function  test_setOperator_nextProgramIdIs1
+    // function  test_setOperator_capsMaxRewards (checks for reverts)
     // 
 
 

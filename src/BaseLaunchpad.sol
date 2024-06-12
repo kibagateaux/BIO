@@ -11,7 +11,7 @@ abstract contract BaseLaunchpad {
     address constant VBIO = address(0xB10);
     uint96 nextApplicantId; // global applicant ID pool
     // slot 2
-    address biorg; // BIO Network governance manager
+    address owner; // BIO Network governance manager
     uint96 operatorBIOReward; // BIO per launch() in a program
     // slot 3
     address bioReactor; // BIO Network liquidity manager
@@ -32,8 +32,8 @@ abstract contract BaseLaunchpad {
     event Uncurate(uint256 indexed curationID, address indexed curator); // TODO can remove curator  if not doing NFT tokenization
     event Claim(uint256 indexed curationId,  address indexed claimer, uint256 bioAmount, uint256 xdaoAmount);
     event Launch(uint64 applicant,  address token, uint256 initSupply, uint256 liquidityReserves);
-    event Auction(uint64 indexed applicant,  uint256 initSupply, uint32 startDate, uint32 endDate);
-    
+    event StartAuction(uint64 indexed applicant,  uint256 initSupply, uint32 startDate, uint32 endDate);
+
     // Launchpad Admin Events
     event SetProgram(address indexed program, bool approval);
     event SetReactor(address indexed program);
@@ -73,8 +73,7 @@ abstract contract BaseLaunchpad {
     }
 
     struct Curation {
-        address owner;
-        uint96 amount;
+        uint128 amount;
         bool isVbio;
     }
 
@@ -85,16 +84,17 @@ abstract contract BaseLaunchpad {
     }
 
     struct AuctionMetadata {
-        address launchCode;
-        address token;
+        address launchCode; // approved template for fair token sales by BIO network 
+        address token;  // token being launched
+        address manager; // who can update/close/etc auction after launch
         uint128 amount; // initial xDAO treasury (excl BIO reserves annd rewards)
         uint32  startTime; // unix timestamp or block depending on launchCode
-        uint32  endTime;
+        uint32  endTime; // unix timestamp or block depending on launchCode
         bytes[] customLaunchData; // (for launch provider if needed for auction settings or something)
     }
 
 
-    error NotBIOGovernor();
+    error NotOwner();
     error NotProgramOperator();
     error NotCurator();
     error NotApplicationOwner();
@@ -102,6 +102,8 @@ abstract contract BaseLaunchpad {
     error InvalidAppStatus(APPLICATION_STATUS current, APPLICATION_STATUS target);
     error TakeoffFailed();
 
+    error BadLaunchCode();
+    error NotCuratorLaunchCode();
     error InvalidOwnerShare();
     error InvalidTokenSupply();
     error InvalidProgramRewards_LR();
