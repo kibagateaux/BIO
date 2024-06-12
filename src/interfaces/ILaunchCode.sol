@@ -4,7 +4,8 @@
 // only for public launch. staker launch is automated in launchpad
 
 interface LaunchCode {
-    function launch(address governance, uint256 initial, uint256 totalSupply) returns(bool);
+    // creates the public auction for 
+    function launch(address governance, uint256 tokensAuctioned, uint32 startDate, uint32 endDate) public returns(address);
     // check if custom launch template data is valid
-    function validateData(bytes[] inputs) returns(bool);
+    function validateData(bytes[] inputs) public;
 }
