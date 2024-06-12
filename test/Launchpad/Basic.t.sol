@@ -64,6 +64,15 @@ contract BasicLaunchpadTests is Test {
         vm.expectRevert(BaseLaunchpad.)
     }
 
+    /*
+        Program Operator Actions
+    */
+
+    // TODO check Program rewards heavily
+    // test_setOperator_setsDefualtRewards (sets to right program + sets right amounts)
+    // test_setOperator_nextProgramIdIs1
+    // test_setOperator_capsMaxRewards (checks for reverts)
+    // 
 
 
 }
