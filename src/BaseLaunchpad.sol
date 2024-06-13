@@ -2,10 +2,10 @@ abstract contract BaseLaunchpad {
     enum APPLICATION_STATUS { SUBMITTED, ACCEPTED, REJECTED, COMPLETED, REMOVED, LAUNCHED }
     // slot 0
     uint16 constant BPS_COEFFICIENT = 10_000; // xDAO tokens reserved for BIO liquidity pairs
-    uint16 constant MAX_LIQUIDITY_RESERVES_BPS = 1000; //1 0% -  xDAO tokens reserved for BIO liquidity pairs
-    uint16 constant MAX_OPERATOR_REWARD_BPS = 8000; // 80% - max 80% of a token can go org running a cohort. namely bioDAOs for their IPTs
+    uint16 constant MAX_LIQUIDITY_RESERVES_BPS = 1_000; // 10% -  xDAO tokens reserved for BIO liquidity pairs
+    uint16 constant MAX_OPERATOR_REWARD_BPS = 8_000; // 80% - max 80% of a token can go org running a cohort. namely bioDAOs for their IPTs
     uint16 constant MAX_CURATOR_REWARDS_RESERVE_BPS = 100; // 1% - xDAO tokens reserved for Curators to applicants
-    uint16 constant MAX_CURATOR_AUCTION_RESERVE_BPS = 2090; // 20% - xDAO tokens reserved for Curators to applicants
+    uint16 constant MAX_CURATOR_AUCTION_RESERVE_BPS = 2_090; // 20% - xDAO tokens reserved for Curators to applicants
     address constant BIO = address(0xB10);
     // slot 1
     address constant VBIO = address(0xB10);
@@ -19,18 +19,21 @@ abstract contract BaseLaunchpad {
     // slot 4
     address curatorLaunchCode = address(0x0); // default launch code for private curator auctions on accept()
 
+    // bioDAOs. ID = uint64 to encode with curator address into uint256
+    mapping(uint64 => Application) apps; // bioDAO entry in launchpad registry
+    mapping(uint64 => AppRewards) rewards; // how much of bioDAO token go to curators and liquidity after launch
+    // curators
+    mapping(uint256 => uint256) curations; // curator stakes to individual applicants
     mapping(address => uint256) vbioLocked; // (how much vested BIO someone has staked already)
-    mapping(uint64 => Application) apps; // bioDAO entry in launchpad
-    mapping(uint64 => AppRewards) rewards; // bioDAO entry in launchpad
-    mapping(uint256 => Curation) curations; // bioDAO entry in launchpad
-    mapping(address =>  Program) programs;// programId  → rewardNonce → reward rates across bioDAOs in program
-    mapping(address =>  bool) launchCodes;// templatize GTM playbooks for bioDAOs. launchcode => expectedFuncSignature?
+    // BIO gov
+    mapping(address =>  Program) programs;// programId -> rewardNonce -> reward rates across bioDAOs in program
+    mapping(address =>  bool) launchCodes;// approved templatized token sale strategies for bioDAOs to use
 
     // Launchpad Usage Events
-    event SubmitApp(address indexed program, address indexed applicant, uint256 ownerAmount);
-    event Curate(uint64 indexed applicant, address indexed curator, bool indexed isVbio, uint256 amount, uint256 curationID);
-    event Uncurate(uint256 indexed curationID, address indexed curator); // TODO can remove curator  if not doing NFT tokenization
-    event Claim(uint256 indexed curationId,  address indexed claimer, uint256 bioAmount, uint256 xdaoAmount);
+    event SubmitApp(address indexed program, uint64 applicantID, bytes32 ipfsHash);
+    event Curate(uint64 indexed applicant, address indexed curator, uint256 amount, uint256 curationID);
+    event Uncurate(uint256 indexed curationID);
+    event Claim(uint256 indexed curationId, uint256 xdaoAmount);
     event Launch(uint64 applicant,  address token, uint256 initSupply, uint256 liquidityReserves);
     event StartAuction(uint64 indexed applicant,  uint256 initSupply, uint32 startDate, uint32 endDate);
 
@@ -38,21 +41,18 @@ abstract contract BaseLaunchpad {
     event SetProgram(address indexed program, bool approval);
     event SetReactor(address indexed program);
     event SetLaunchCodes(address indexed executor, bool isAllowed);
-    event UpdateProgramRewards(address indexed program, ProgramRewards rewards);
+    event SetProgramRewards(address indexed program, ProgramRewards rewards);
 
     struct ProgramRewards {
-        uint16 totalRewardsReserved;
-        // all bps of bioDAO token to distribute to each pool.
-        uint16 liquidityReserves;//  (e.g. 4% = 400)
-        // uint16 operatorReward; // (e.g. 2% = 200) // TODO remove
-        // uint16 curatorReward; // (e.g. 0.5% = 50) // TODO remove
-        uint16 curatorAuction; // (e.g. 0.5% = 50) // TODO remove
+        uint16 totalRewardsBps; // sum of all program rewards in bioDAO tokens for checking overflows during launch()
+        uint16 liquidityReserves;//  (e.g. 10% = 1000)
+        uint16 curatorAuction; // (e.g. 0.5% = 50) // TODO remove bc standardized?
     }
 
     struct Program {
-        uint16 nextRewardId;
         address stakingToken;
-        mapping(uint16 =>  ProgramRewards) pRewards;
+        uint16 nextRewardId;
+        mapping(uint16 => ProgramRewards) pRewards;
     }
 
     struct Application {
@@ -70,11 +70,6 @@ abstract contract BaseLaunchpad {
     struct AppRewards {
         uint128 totalLiquidityReserves; // (in xDAO token, w/ xDAO token decimals)
         uint128 totalCuratorAuction; // (in xDAO token, w/xDAO token decimals)
-    }
-
-    struct Curation {
-        uint128 amount;
-        bool isVbio;
     }
 
     struct BorgMetadata {

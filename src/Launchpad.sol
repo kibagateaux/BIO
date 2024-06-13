@@ -31,12 +31,8 @@ contract BIOLaunchpad is BaseLaunchpad {
     function launch(uint64 appID, AuctionMetadata calldata meta) public returns(address) {
         // assert caller is applicant in _startAuction()
         _assertAppStatus(apps[appID].status, APPLICATION_STATUS.COMPLETED);
-        if(meta.launchCode != curatorLaunchCode) revert NotCuratorLaunchCode();
-
         apps[appID].status = APPLICATION_STATUS.LAUNCHED;
 
-        // TODO allow transfers on ERC20 if we set off by default in template
-        // ERC20(meta.token).mint(meta.launchCode, meta.amount); // TODO include in launch template and delegate call launch()?
         return _startAuction(appID, meta);
     }
 
@@ -89,12 +85,12 @@ contract BIOLaunchpad is BaseLaunchpad {
         if(vbioLocked[msg.sender] + amount > VBIO.balance(msg.sender))  revert InsufficientVbioBalance();
 
         uint256 curationID  = _encodeID(appID, msg.sender);
-        curations[curationID] = Curation({
-            owner: msg.sender,
-            amount: amount
-        });
-        apps[appID].totalStaked += amount;
-        vbioLocked[msg.sender] += amount;
+        unchecked {
+            // pratically wont overflow bc dispersion and uint checks on VBIO contract
+            curations[curationID] = amount;
+            apps[appID].totalStaked += amount;
+            vbioLocked[msg.sender] += amount;
+        }
 
         emit Curate(appID, msg.sender, amount, curationID);
     }
@@ -107,7 +103,7 @@ contract BIOLaunchpad is BaseLaunchpad {
         if(msg.sender != curator) revert NotCurator();
 
         // remove from total count for rewards. Not in _removeCuration bc claim() needs to keep total consistently calculate curator rewards %.
-        apps[appID].totalStaked -= curations[curationID].amount;
+        apps[appID].totalStaked -= curations[curationID];
 
         _removeCuration(curationID, curations[curationID]);
         
@@ -149,12 +145,14 @@ contract BIOLaunchpad is BaseLaunchpad {
         curator = address(uint160(curationID >> 96));
     }
 
-    function _removeCuration(uint256 cID, Curation memory c) internal {
+    function _removeCuration(uint256 cID) internal {
         (, address curator) = _decodeID(cID);
 
-        vbioLocked[curator] -= c.amount;
+        unchecked {
+            vbioLocked[curator] -= curations[cID];
+        }
 
-        delete curations[cID];
+        delete curations[cID]; // fuck off
     }
 
     /**
@@ -190,26 +188,34 @@ contract BIOLaunchpad is BaseLaunchpad {
         _assertProgramOperator(appID);
         _assertAppStatus(apps[appID].status, APPLICATION_STATUS.SUBMITTED);
 
-        return _deployNewToken(appID, meta);
+        (address xdaoToken, uint256 curatorRewards) = _deployNewToken(appID, meta);
+            
+        _startAuction(appID, AuctionMetadata({
+            launchCodes: curatorLaunchCode,
+            token: xdaoToken,
+            manager: apps[appID].owner, // TODO operator?
+            amount: curatorRewards,
+            startTime: unchecked { block.timestamp + 1 days },
+            endTime: unchecked { block.timestamp + 8 days } // TODO sanity check
+            // customLaunchData: null
+        }));
     }
 
-    function _deployNewToken(uint64 appID, BorgMetadata calldata meta) private returns(address) {
+    function _deployNewToken(uint64 appID, BorgMetadata calldata meta) private returns(address, uint256) {
         Application memory a = apps[appID];
         // TODO better token template. will be base token for all DAOs in our ecosystem
         // mintable by reactor+governance, L3s, NON-Transferrable until PUBLIC Auction, distribute 6.9% to reactor every time minted
         ERC20 xdaoToken = new ERC20(meta.name, meta.symbol, meta.maxSupply);
-        
+
+        // TODO rewardID at time of submit() or accept()??
         ProgramRewards memory rates = programs[a.program].rewards[a.rewardProgramID];
 
-        AppRewards memory r  = AppRewards({
+        AppRewards memory r = AppRewards({
             totalLiquidityReserves: (meta.maxSupply * rates.liquidityReserves) / BPS_COEFFICIENT,
-            // totalOperatorRewards: (meta.maxSupply * rates.operatorReward) / BPS_COEFFICIENT, // pretty sure can remove from struct. Dont need besides now and stored in events for later
-            // totalCuratorRewards: (meta.maxSupply * rates.curatorReward) / BPS_COEFFICIENT,
             totalCuratorAuction: (meta.maxSupply * rates.curatorAuction) / BPS_COEFFICIENT
         });
 
-        // xdaoToken.mint(a.governance, meta.initialSupply);
-        // xdaoToken.mint(operator, r.totalOperatorRewards); // TODO remove or just set to 0 initially
+        // TODO mint to vBIO and then create vest schedule
         BIO.mint(a.program, operatorBIOReward);
 
         a.reward = r;
@@ -217,7 +223,7 @@ contract BIOLaunchpad is BaseLaunchpad {
         a.status = APPLICATION_STATUS.ACCEPTED; // technically belongs in accept() before _deployToken but gas efficient here
         apps[appID] = a;
 
-        return address(xdaoToken);
+        return (address(xdaoToken), r.totalCuratorAuction);
     }
 
 
@@ -231,10 +237,11 @@ contract BIOLaunchpad is BaseLaunchpad {
         if(newRewards.liquidityReserves > MAX_LIQUIDITY_RESERVES_BPS) revert InvalidProgramRewards_LR();
         if(newRewards.curatorAuction > MAX_CURATOR_AUCTION_RESERVE_BPS) revert InvalidProgramRewards_CA();
         
-        newRewards.totalRewardsReserved = newRewards.liquidityReserves + newRewards.curatorAuction;
+        newRewards.totalRewardsBps = newRewards.liquidityReserves + newRewards.curatorAuction;
         Program memory p = programs[operator];
 
-        emit UpdateProgramRewards(operator, p.nextRewardId, newRewards); // So dont need to save old rewardId to new var
+        // emit early so dont need to save old rewardId to new var
+        emit SetProgramRewards(operator, p.nextRewardId, newRewards);
 
         p.rewards[p.nextRewardId] = newRewards;
         p.nextRewardId++;
