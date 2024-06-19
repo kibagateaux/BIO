@@ -1,51 +1,107 @@
-import "forge-std/Test.sol";
+import { BaseLaunchpad } from "src/BaseLaunchpad.sol";
+import { BaseLaunchpadTest } from "./Base.t.sol";
 
 
-contract BasicLaunchpadTests is Test {
+contract BasicLaunchpadTests is BaseLaunchpadTest {
 
-    function setup() public {
-
+    function setUp() public virtual override(BaseLaunchpadTest) {
+        super.setUp();
     }
 
     /*
         bioDAO actions
     */
 
-    function  prove_submit_applicantID_increments(uint8 applicants) public {
+    function  test_submit_applicantID_increments(uint8 applicants) public {
         for(uint i; i < applicants; i++) {
             assertEq(launchpad.nextApplicantId(), i);
             launchpad.submit(operator, bytes32(0));
         }
     }
 
-    function  prove_launch_statusMustBeCOMPLETED() public {
+    function  test_launch_statusMustBeCOMPLETED() public {
+        bytes[] memory customLaunchData;
+        address launchCode = curatorAuction;
         launchpad.submit(operator, bytes32(0));
-        vm.expectRevert(launchpad.InvalidAppStatus.selector, launchpad.APPLICATION_STATUS.SUBMITTED, launchpad.APPLICATION_STATUS.COMPLETED);
-
-        vm.prank(address(0xb10da0));
-        launchpad.launch();
-
-        vm.prank(operator);
-        launchpad.reject(0);
-
-        vm.expectRevert(launchpad.InvalidAppStatus.selector, launchpad.APPLICATION_STATUS.REJECTED, launchpad.APPLICATION_STATUS.COMPLETED);
-        
-        vm.prank(address(0xb10da0));
-        launchpad.launch();
-        
-        launchpad.submit(operator, bytes32(0));
-        vm.prank(operator);
-        address token = launchpad.accept(1);
-
-        vm.prank(address(0xb10da0));
-        bytes[] customLaunchData = [];
-        launchpad.launch(1, AuctionMetadata({
+        vm.expectRevert(
+            abi.encodeWithSelector(BaseLaunchpad.InvalidAppStatus.selector,
+                BaseLaunchpad.APPLICATION_STATUS.SUBMITTED,
+                BaseLaunchpad.APPLICATION_STATUS.COMPLETED
+            )
+        );
+        vm.prank(xdao);
+        launchpad.launch(0, BaseLaunchpad.AuctionMetadata({
+            launchCode: launchCode,
+            manager: bioNetwork,
             amount: 0,
-            token: token,
-            startTime: block.timestamp,
-            endTime: block.timestamp + 1,
+            token: address(bioToken),
+            startTime: uint32(block.timestamp),
+            endTime: uint32(block.timestamp + 1),
             customLaunchData: customLaunchData
         }));
+
+        emit log_named_bytes32("post launch #1", bytes32(0));
+        vm.prank(operator);
+        launchpad.reject(0);
+        vm.expectRevert(
+            abi.encodeWithSelector(BaseLaunchpad.InvalidAppStatus.selector,
+                BaseLaunchpad.APPLICATION_STATUS.REJECTED,
+                BaseLaunchpad.APPLICATION_STATUS.COMPLETED
+            )
+        );
+        vm.prank(xdao);
+        launchpad.launch(0, BaseLaunchpad.AuctionMetadata({
+            launchCode: launchCode,
+            manager: bioNetwork,
+            amount: 0,
+            token: address(bioToken),
+            startTime: uint32(block.timestamp),
+            endTime: uint32(block.timestamp + 1),
+            customLaunchData: customLaunchData
+        }));
+        
+        emit log_named_bytes32("post launch #2", bytes32(0));
+        launchpad.submit(operator, bytes32(0));
+        vm.prank(operator);
+        address token = launchpad.accept(1, BaseLaunchpad.BorgMetadata({
+            name: "test",
+            symbol: "tester",
+            maxSupply: 1_000_000 ether
+        }));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(BaseLaunchpad.InvalidAppStatus.selector,
+                BaseLaunchpad.APPLICATION_STATUS.ACCEPTED,
+                BaseLaunchpad.APPLICATION_STATUS.COMPLETED
+            )
+        );
+        vm.prank(xdao);
+        launchpad.launch(1, BaseLaunchpad.AuctionMetadata({
+            launchCode: launchCode,
+            manager: bioNetwork,
+            amount: 0,
+            token: token,
+            startTime: uint32(block.timestamp),
+            endTime: uint32(block.timestamp + 1),
+            customLaunchData: customLaunchData
+        }));
+        emit log_named_bytes32("post launch #3", bytes32(0));
+
+        /** Can finally launch() once marked completed on graduate() */
+        vm.prank(operator);
+        launchpad.graduate(1, xdao);
+
+        vm.prank(xdao);
+        launchpad.launch(1, BaseLaunchpad.AuctionMetadata({
+            launchCode: launchCode,
+            manager: bioNetwork,
+            amount: 0,
+            token: token,
+            startTime: uint32(block.timestamp),
+            endTime: uint32(block.timestamp + 1),
+            customLaunchData: customLaunchData
+        }));
+
     }
 
     // u would think right? But no! bc of scientist onboarding no address at time of application, proxies submit on their behalf.

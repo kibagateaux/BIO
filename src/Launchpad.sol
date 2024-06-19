@@ -1,15 +1,15 @@
 pragma solidity ^0.8.4;
 
-// TODO import custom template ERC20 for all bioDAO tokens
-import { ERC20 } from "solady/tokens/ERC20.sol";
+// TODO import custom template XDAOToken for all bioDAO tokens
+import { XDAOToken } from ".//XDAOToken.sol";
 
 import { BaseLaunchpad } from "./BaseLaunchpad.sol";
 import { ILaunchCode } from "./interfaces/ILaunchCode.sol";
 
-contract BIOLaunchpad is BaseLaunchpad {
-    constructor(address _owner, address _bioReactor, address _curatorLaunchCode, uint96 _operatorBIOReward) {
+contract Launchpad is BaseLaunchpad {
+    constructor(address _owner, address _bioBank, address _curatorLaunchCode, uint96 _operatorBIOReward) {
         owner = _owner;
-        bioReactor = _bioReactor;
+        bioBank = _bioBank;
         launchCodes[_curatorLaunchCode] = true;
         curatorLaunchCode = _curatorLaunchCode;
         operatorBIOReward = _operatorBIOReward;
@@ -28,7 +28,7 @@ contract BIOLaunchpad is BaseLaunchpad {
 
     /// @notice initaite public auction of bioDAO token and 
     /// @return auction - address of new auction initiated for bioDAO launch
-    function launch(uint64 appID, AuctionMetadata calldata meta) public returns(address) {
+    function launch(uint96 appID, AuctionMetadata memory meta) public returns(address) {
         // assert caller is applicant in _startAuction()
         _assertAppStatus(apps[appID].status, APPLICATION_STATUS.COMPLETED);
         apps[appID].status = APPLICATION_STATUS.LAUNCHED;
@@ -36,13 +36,13 @@ contract BIOLaunchpad is BaseLaunchpad {
         return _startAuction(appID, meta);
     }
 
-    function startAuction(uint64 appID, AuctionMetadata calldata meta) public returns(address) {
+    function startAuction(uint96 appID, AuctionMetadata memory meta) public returns(address) {
         // assert caller is applicant in _startAuction()
         _assertAppStatus(apps[appID].status, APPLICATION_STATUS.LAUNCHED);
         return _startAuction(appID, meta);
     }
 
-    function _startAuction(uint64 appID, AuctionMetadata calldata meta) internal returns(address) {
+    function _startAuction(uint96 appID, AuctionMetadata memory meta) internal returns(address) {
         Application memory a = apps[appID];
         _assertAppOwner(a.governance);
         // TODO assert auction requirements e.g. startTime in future, token = app.token, amount != 0- 
@@ -50,15 +50,23 @@ contract BIOLaunchpad is BaseLaunchpad {
 
         // use transferFrom() not mint() to support Cohort 1 and other exogenous bioDAOs
         // TODO move more logic like token instantiation to launchCode.launch(). Update LaunchMetadata and create new AuctionMetadata
-        // ERC20(meta.token).transferFrom(msg.sender, meta.launchCode); // TODO include in launch template and delegate call launch()?
+        // XDAOToken(meta.token).transferFrom(msg.sender, meta.launchCode); // TODO include in launch template and delegate call launch()?
         
-        try(meta.launchCode.delegatecall(ILaunchCode.launch.selector, meta)) returns (bool success, bytes memory result) {
-            address auction = abi.decode(result, "(address)");
+        (bool success, bytes memory result) = meta.launchCode.delegatecall(
+            abi.encodeWithSelector(
+                ILaunchCode.launch.selector,
+                meta.manager,
+                meta.amount,
+                meta.startTime,
+                meta.endTime
+            )
+        );
+        if(success) {
+            address auction = abi.decode(result, (address));
             // TODO. auction started. return address?
-            emit StartAuction(meta.token, meta.amount, meta.startTime, meta.endTime);
+            emit StartAuction(appID, meta.amount, meta.startTime, meta.endTime);
             return auction;
-        } catch { 
-            // TODO
+        } else {
             revert TakeoffFailed();
         }
     }
@@ -66,23 +74,28 @@ contract BIOLaunchpad is BaseLaunchpad {
     
     function submit(address program, bytes32 ipfsHash) public {
         apps[nextApplicantId] = Application({
-            status: APPLICATION_STATUS.STAGES.SUBMITTED,
+            status: APPLICATION_STATUS.SUBMITTED,
             program: program,
-            governance: address(0)
+            //
+            rewardProgramID: 0,
+            totalStaked: 0,
+            governance: address(0),
+            token: address(0)
         });
         
+        emit SubmitApp(program, msg.sender, nextApplicantId, ipfsHash);
+
         nextApplicantId++;
-        emit SubmitApp(program, msg.sender, ipfsHash);
     }
 
     /*
         BIO curator actions - curate, uncurate, claim, 
     */
 
-    function curate(uint64 appID, uint64 amount) public {
+    function curate(uint96 appID, uint96 amount) public {
+        if(amount == 0) revert MustStakeOver0BIO();
         _assertAppStatus(apps[appID].status, APPLICATION_STATUS.SUBMITTED);
-
-        if(vbioLocked[msg.sender] + amount > VBIO.balance(msg.sender))  revert InsufficientVbioBalance();
+        if(vbioLocked[msg.sender] + amount > VBIO.balanceOf(msg.sender))  revert InsufficientVbioBalance();
 
         uint256 curationID  = _encodeID(appID, msg.sender);
         unchecked {
@@ -98,16 +111,18 @@ contract BIOLaunchpad is BaseLaunchpad {
     function uncurate(uint256 curationID) public {
         (uint96 appID, address curator) = _decodeID(curationID);
 
-        // can unstake until rewards are claimable, then must claim to prevent locked tokens
-        if(apps[appID].status == APPLICATION_STATUS.LAUNCHED) revert MustClaimOnceLaunched();
+        // cant unstake once ACCEPTED and first rewards distributed, must wait till LAUNCHED and claim()
+        if(apps[appID].status == APPLICATION_STATUS.ACCEPTED 
+            ||  apps[appID].status == APPLICATION_STATUS.COMPLETED
+            ||  apps[appID].status == APPLICATION_STATUS.LAUNCHED) revert MustClaimOnceLaunched();
         if(msg.sender != curator) revert NotCurator();
 
         // remove from total count for rewards. Not in _removeCuration bc claim() needs to keep total consistently calculate curator rewards %.
-        apps[appID].totalStaked -= curations[curationID];
+        apps[appID].totalStaked -= uint128(curations[curationID]);
 
-        _removeCuration(curationID, curations[curationID]);
+        _removeCuration(curationID);
         
-        emit Uncurate(curationID, msg.sender);
+        emit Uncurate(curationID);
 
     }
 
@@ -115,16 +130,19 @@ contract BIOLaunchpad is BaseLaunchpad {
         (uint96 appID, address curator) = _decodeID(curationID);
         _assertAppStatus(apps[appID].status, APPLICATION_STATUS.LAUNCHED);
         
-        Curation memory c = curations[curationID];
+        uint256 c = curations[curationID];
         if(msg.sender != curator) revert NotCurator();
-        if(c.amount == 0) revert RewardsAlreadyClaimed();
+        if(c == 0) revert RewardsAlreadyClaimed();
 
-        uint256 rewardAmount = (apps[appID].rewards.totalCuratorRewards * c.amount) / apps[appID].totalStaked;
-    
-        ERC20(apps[appID].token).transfer(curator, rewardAmount);
-        _removeCuration(curationID, c);
+        // uint256 rewardAmount = (rewards[appID].totalCuratorRewards * c) / apps[appID].totalStaked;
+        uint256 rewardAmount = 0;
 
-        emit Claim(curationID, msg.sender, rewardAmount);
+        // TODO give BIO emission?
+        // BIO.mint(curator, curatorBIOReward * c / BPS_COEFFICIENT)
+        // XDAOToken(apps[appID].token).transfer(curator, rewardAmount);
+        _removeCuration(curationID);
+
+        emit Claim(curationID, rewardAmount);
     
     }
     
@@ -134,9 +152,9 @@ contract BIOLaunchpad is BaseLaunchpad {
         uint96 id1 = uint96(appID);
         uint160 id2 = uint160(curator);
         // Shift the second address value to the left by 160 bits (20 bytes)
-        uint64 encodedValue = uint64(id2 << 160);
+        uint96 encodedValue = uint96(id2 << 160);
         // Add the first address value to the encoded value
-        uint256(encodedValue |= uint64(id1));
+        return uint256(id1 |= encodedValue);
     }
 
     function _decodeID(uint256 curationID) public pure returns (uint96 appID, address curator) {
@@ -154,11 +172,23 @@ contract BIOLaunchpad is BaseLaunchpad {
 
         delete curations[cID]; // fuck off
     }
+    /**
+        Program Operator - reject, accept, graduate, setProgramRewards
+    */
+    function _assertBioBank() internal view {
+        if(bioBank != msg.sender) revert NotBioBank();
+    }
+
+    function pullLiquidityReserves(uint96 appID, uint256 amount) public {
+        _assertBioBank();
+        rewards[appID].totalLiquidityReserves -= uint128(amount);
+        XDAOToken(apps[appID].token).transfer(bioBank, amount);
+    }
 
     /**
         Program Operator - reject, accept, graduate, setProgramRewards
     */
-    function _assertProgramOperator(uint64 appID) internal view {
+    function _assertProgramOperator(uint96 appID) internal view {
         if(apps[appID].program != msg.sender) revert NotProgramOperator();
     }
 
@@ -166,9 +196,8 @@ contract BIOLaunchpad is BaseLaunchpad {
     * @notice - The application that program operator wants to mark as completing the program and unlock Launchpad features
     * @param appID - The application that program operator wants to mark as complete
     * @param governance - multisig created by bioDAO during program to use for ongoing Launchpad operations e.g. launch()
-    * @return - bool if app marked as complete or not
      */
-    function graduate(uint64 appID, address governance) public {
+    function graduate(uint96 appID, address governance) public {
         _assertProgramOperator(appID);
         _assertAppStatus(apps[appID].status, APPLICATION_STATUS.ACCEPTED);
 
@@ -176,7 +205,7 @@ contract BIOLaunchpad is BaseLaunchpad {
         apps[appID].governance = governance;
     }
 
-    function reject(uint64 appID) public {
+    function reject(uint96 appID) public {
         _assertProgramOperator(appID);
         if(apps[appID].status == APPLICATION_STATUS.LAUNCHED) revert MustClaimOnceLaunched();
         if(apps[appID].status == APPLICATION_STATUS.SUBMITTED)
@@ -184,42 +213,48 @@ contract BIOLaunchpad is BaseLaunchpad {
         else apps[appID].status = APPLICATION_STATUS.REMOVED; // forcibly removed from program after being accepted
     }
 
-    function accept(uint64 appID, BorgMetadata calldata meta) public returns(address) {
+    function accept(uint96 appID, BorgMetadata calldata meta) public returns(address) {
         _assertProgramOperator(appID);
         _assertAppStatus(apps[appID].status, APPLICATION_STATUS.SUBMITTED);
 
         (address xdaoToken, uint256 curatorRewards) = _deployNewToken(appID, meta);
-            
+        uint32 startTime;
+        uint32 endTime;
+        bytes[] memory customData;
+        unchecked {
+            (startTime, endTime) = (uint32(block.timestamp + 1 days), uint32(block.timestamp + 8 days));
+        }
+
         _startAuction(appID, AuctionMetadata({
-            launchCodes: curatorLaunchCode,
+            launchCode: curatorLaunchCode,
             token: xdaoToken,
-            manager: apps[appID].owner, // TODO operator?
-            amount: curatorRewards,
-            startTime: unchecked { block.timestamp + 1 days },
-            endTime: unchecked { block.timestamp + 8 days } // TODO sanity check
-            // customLaunchData: null
+            manager: apps[appID].governance, // TODO operator?
+            amount: uint128(curatorRewards),
+            startTime: startTime,
+            endTime: endTime,
+            customLaunchData: customData
         }));
     }
 
-    function _deployNewToken(uint64 appID, BorgMetadata calldata meta) private returns(address, uint256) {
+    function _deployNewToken(uint96 appID, BorgMetadata calldata meta) private returns(address, uint256) {
         Application memory a = apps[appID];
         // TODO better token template. will be base token for all DAOs in our ecosystem
         // mintable by reactor+governance, L3s, NON-Transferrable until PUBLIC Auction, distribute 6.9% to reactor every time minted
-        ERC20 xdaoToken = new ERC20(meta.name, meta.symbol, meta.maxSupply);
+        XDAOToken xdaoToken = new XDAOToken(meta.name, meta.symbol);
 
         // TODO rewardID at time of submit() or accept()??
         ProgramRewards memory rates = programs[a.program].rewards[a.rewardProgramID];
 
         AppRewards memory r = AppRewards({
-            totalLiquidityReserves: (meta.maxSupply * rates.liquidityReserves) / BPS_COEFFICIENT,
-            totalCuratorAuction: (meta.maxSupply * rates.curatorAuction) / BPS_COEFFICIENT
+            totalLiquidityReserves: uint128((meta.maxSupply * rates.liquidityReserves) / BPS_COEFFICIENT),
+            totalCuratorAuction: uint128((meta.maxSupply * rates.curatorAuction) / BPS_COEFFICIENT)
         });
 
         // TODO mint to vBIO and then create vest schedule
         BIO.mint(a.program, operatorBIOReward);
 
-        a.reward = r;
-        a.token = xdaoToken;
+        rewards[appID] = r;
+        a.token = address(xdaoToken);
         a.status = APPLICATION_STATUS.ACCEPTED; // technically belongs in accept() before _deployToken but gas efficient here
         apps[appID] = a;
 
@@ -238,14 +273,13 @@ contract BIOLaunchpad is BaseLaunchpad {
         if(newRewards.curatorAuction > MAX_CURATOR_AUCTION_RESERVE_BPS) revert InvalidProgramRewards_CA();
         
         newRewards.totalRewardsBps = newRewards.liquidityReserves + newRewards.curatorAuction;
-        Program memory p = programs[operator];
+        Program storage p = programs[operator];
 
         // emit early so dont need to save old rewardId to new var
         emit SetProgramRewards(operator, p.nextRewardId, newRewards);
 
         p.rewards[p.nextRewardId] = newRewards;
         p.nextRewardId++;
-        programs[operator] = p;
     }
     
 
@@ -259,8 +293,9 @@ contract BIOLaunchpad is BaseLaunchpad {
     function setProgram(address operator, bool allowed) public {
         _assertOwner();
         if(allowed) {
-            programs[operator].stakingToken = BIO;
+            programs[operator].stakingToken = address(BIO);
             programs[operator].rewards[0] = ProgramRewards({
+                totalRewardsBps: 920,
                 liquidityReserves: 420,
                 curatorAuction: 500
             });
@@ -272,12 +307,12 @@ contract BIOLaunchpad is BaseLaunchpad {
     function setLaunchCodes(address executor, bool isAllowed) public {
         _assertOwner();
         launchCodes[executor] = isAllowed;
-        emit setLaunchCodes(executor, isAllowed);
+        emit SetLaunchCodes(executor, isAllowed);
     }
 
     function setBioReactor(address reactor) public {
         _assertOwner();
-        bioReactor = reactor;
+        bioBank = reactor;
         emit SetReactor(reactor);
     }
 

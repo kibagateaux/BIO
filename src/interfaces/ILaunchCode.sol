@@ -5,7 +5,7 @@
 
 interface ILaunchCode {
     // creates the public auction for 
-    function launch(address governance, uint256 tokensAuctioned, uint32 startDate, uint32 endDate) public returns(address);
+    function launch(address governance, uint256 tokensAuctioned, uint32 startDate, uint32 endDate) external returns(address);
     // check if custom launch template data is valid
-    function validateData(bytes[] inputs) public;
+    function validateData(bytes[] calldata inputs) external;
 }
