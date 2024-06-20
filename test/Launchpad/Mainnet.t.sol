@@ -6,7 +6,8 @@ import "forge-std/Test.sol";
 
 
 contract LaunchpadMainnetTests is BaseLaunchpadTest {
-    function setUp() public override {
+    function setUp() public virtual override {
+        super.setUp();
         // Fork from specified block chain at block
         vm.createSelectFork("https://rpc.ankr.com/eth"); // , block_number);
 
