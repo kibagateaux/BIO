@@ -30,49 +30,48 @@ contract Launchpad is BaseLaunchpad {
 
     /// @notice initaite public auction of bioDAO token and 
     /// @return auction - address of new auction initiated for bioDAO launch
+    /// @dev TODO add reentrancy
     function launch(uint96 appID, AuctionMetadata memory meta) public returns(address) {
         _assertAppStatus(apps[appID].status, APPLICATION_STATUS.COMPLETED);
         _assertAppOwner(apps[appID].governance);
         
         apps[appID].status = APPLICATION_STATUS.LAUNCHED;
+
+        // TODO mint to vBIO and then create vest schedule
+        BIO.mint(a.program, operatorBIOReward);
         emit SetApplicantStatus(appID, APPLICATION_STATUS.COMPLETED, APPLICATION_STATUS.LAUNCHED);
 
-        return _startAuction(appID, meta);
+        return _startAuction(appID, false, meta);
     }
 
+    /// @dev TODO add reentrancy
     function startAuction(uint96 appID, AuctionMetadata memory meta) public returns(address) {
         _assertAppStatus(apps[appID].status, APPLICATION_STATUS.LAUNCHED);
         _assertAppOwner(apps[appID].governance);
-        return _startAuction(appID, meta);
+        return _startAuction(appID, false, meta);
     }
 
-    function _startAuction(uint96 appID, AuctionMetadata memory meta) internal returns(address) {
+    function _startAuction(uint96 appID, bool isReserveAuction, AuctionMetadata memory meta) internal returns(address) {
         Application memory a = apps[appID];
         // TODO assert auction requirements e.g. startTime in future, token = app.token, amount != 0- 
         if(!launchCodes[meta.launchCode]) revert BadLaunchCode();
-
-        // use transferFrom() not mint() to support Cohort 1 and other exogenous bioDAOs
-        // TODO move more logic like token instantiation to launchCode.launch(). Update LaunchMetadata and create new AuctionMetadata
-        // XDAOToken(meta.token).transferFrom(msg.sender, meta.launchCode); // TODO include in launch template and delegate call launch()?
+        // offload meta parameter checking to launchcodes
+        if(isReserveAuction) {
+            XDAOToken(meta.giveToken).transfer(meta.launchCode, meta.totalGive); // TODO include in launch template and delegate call launch()?
+        } else {
+            XDAOToken(meta.giveToken).transferFrom(msg.sender, meta.launchCode, meta.totalGive); // TODO include in launch template and delegate call launch()?
+        }
         
         // TODO Get TPA style working
-        // (bool success, bytes memory result) = meta.launchCode.delegatecall(
-        //     abi.encodeWithSelector(
-        //         ILaunchCode.launch.selector,
-        //         meta.manager,
-        //         meta.amount,
-        //         meta.startTime,
-        //         meta.endTime
-        //     )
-        // );
-        // if(success) {
-        //     address auction = abi.decode(result, (address));
-        //     // TODO. auction started. return address?
-        //     emit StartAuction(appID, meta.amount, meta.startTime, meta.endTime);
-        //     return auction;
-        // } else {
-        //     revert TakeoffFailed();
-        // }
+        (bool success, bytes memory result) = meta.launchCode.call(abi.encodeWithSignature("launch()"));
+        if(success) {
+            address auction = abi.decode(result, (address));
+            // TODO. auction started. return address?
+            emit StartAuction(appID, auction, meta.totalGive, meta.startTime, meta.endTime);
+            return auction;
+        } else {
+            revert TakeoffFailed();
+        }
     }
 
     
@@ -225,7 +224,8 @@ contract Launchpad is BaseLaunchpad {
         }
     }
 
-    function accept(uint96 appID, BorgMetadata calldata meta) public returns(address, address) {
+    /// @dev TODO add reentrancy
+    function accept(uint96 appID, OrgMetadata calldata meta) public returns(address, address) {
         _assertProgramOperator(appID);
         _assertAppStatus(apps[appID].status, APPLICATION_STATUS.SUBMITTED);
 
@@ -237,21 +237,22 @@ contract Launchpad is BaseLaunchpad {
             (startTime, endTime) = (uint32(block.timestamp + 1 days), uint32(block.timestamp + 8 days));
         }
 
-        address auction = _startAuction(appID, AuctionMetadata({
+        address auction = _startAuction(appID, true, AuctionMetadata({
             launchCode: curatorLaunchCode,
-            token: xdaoToken,
+            giveToken: xdaoToken,
             manager: apps[appID].governance, // TODO operator?
-            amount: uint128(curatorRewards),
+            totalGive: uint128(curatorRewards),
             startTime: startTime,
             endTime: endTime,
+            wantToken: address(0), // set to usdc LaunchCode factory
+            totalWant: meta.valuation * curatorRewards / meta.totalSupply, // usdc denominated
             customLaunchData: customData
         }));
-
 
         return (xdaoToken, auction);
     }
 
-    function _deployNewToken(uint96 appID, BorgMetadata calldata meta) private returns(address, uint256) {
+    function _deployNewToken(uint96 appID, OrgMetadata calldata meta) private returns(address, uint256) {
         Application memory a = apps[appID];
         // TODO better token template. will be base token for all DAOs in our ecosystem
         // mintable by reactor+governance, L3s, NON-Transferrable until PUBLIC Auction, distribute 6.9% to reactor every time minted
@@ -264,9 +265,6 @@ contract Launchpad is BaseLaunchpad {
             totalLiquidityReserves: uint128((meta.maxSupply * rates.liquidityReserves) / BPS_COEFFICIENT),
             totalCuratorAuction: uint128((meta.maxSupply * rates.curatorAuction) / BPS_COEFFICIENT)
         });
-
-        // TODO mint to vBIO and then create vest schedule
-        BIO.mint(a.program, operatorBIOReward);
 
         rewards[appID] = r;
         a.token = address(xdaoToken);
@@ -320,6 +318,22 @@ contract Launchpad is BaseLaunchpad {
         }
 
         emit SetProgram(operator, allowed);
+    }
+
+    /// @notice lets bio governance allow DAOs that didnt launch through this contract to use it for future token launches
+    function setExoDAO(address program, address newXDAO, address token) public {
+        _assertOwner();
+
+        apps[nextApplicantId] = Application({
+            status: APPLICATION_STATUS.LAUNCHED,
+            program: program,
+            rewardProgramID: programs[program].nextRewardId - 1,
+            totalStaked: 0,
+            governance: newXDAO,
+            token: token
+        });
+        
+        nextApplicantId++;
     }
 
     function setLaunchCodes(address executor, bool isAllowed) public {

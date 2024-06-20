@@ -11,6 +11,7 @@ abstract contract BaseLaunchpad {
     XDAOToken public BIO = XDAOToken(address(0xB10));
     // slot 1
     XDAOToken public VBIO = XDAOToken(address(0xB10));
+    XDAOToken public USDC = XDAOToken(address(0x05D));
     uint96 public nextApplicantId; // global applicant ID pool
     // slot 2
     address public owner; // BIO Network governance manager
@@ -40,7 +41,7 @@ abstract contract BaseLaunchpad {
     event Uncurate(uint256 indexed curationID);
     event Claim(uint256 indexed curationId, uint256 xdaoAmount);
     event Launch(uint96 indexed applicant,  address token, uint256 curatorAuctionReserves, uint256 liquidityReserves);
-    event StartAuction(uint96 indexed applicant,  uint256 amount, uint32 startDate, uint32 endDate);
+    event StartAuction(uint96 indexed applicant, address auction, uint256 amount, uint32 startDate, uint32 endDate);
 
     // Launchpad Admin Events
     event SetProgram(address indexed program, bool approval);
@@ -76,7 +77,8 @@ abstract contract BaseLaunchpad {
         uint128 totalCuratorAuction; // (in xDAO token, w/xDAO token decimals)
     }
 
-    struct BorgMetadata {
+    struct OrgMetadata {
+        uint128 valuation; // 8 decimal usdc valuation
         uint256 maxSupply; // total max supply of new xDAO token
         string name; // token name
         string symbol; // token symbol
@@ -84,11 +86,13 @@ abstract contract BaseLaunchpad {
 
     struct AuctionMetadata {
         address launchCode; // approved template for fair token sales by BIO network 
-        address token;  // token being launched
-        address manager; // who can update/close/etc auction after launch
-        uint128 amount; // initial xDAO treasury (excl BIO reserves annd rewards)
+        address giveToken;  // token being launched
+        uint128 totalGive; // initial xDAO treasury (excl BIO reserves annd rewards)
+        uint128 totalWantReceived;
+        address wantToken;
         uint32  startTime; // unix timestamp or block depending on launchCode
         uint32  endTime; // unix timestamp or block depending on launchCode
+        address manager; // who can update/close/etc auction after launch
         bytes[] customLaunchData; // (for launch provider if needed for auction settings or something)
     }
 

@@ -614,8 +614,10 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         return BaseLaunchpad.AuctionMetadata({
             launchCode: curatorAuction,
             manager: bioNetwork,
-            amount: 0,
-            token: token,
+            totalGive: 0,
+            giveToken: token,
+            wantToken: address(0), // TODO hardcode? should be added by LaunchCode
+            totalWant: 0,
             startTime: uint32(block.timestamp),
             endTime: uint32(block.timestamp + 1),
             customLaunchData: customLaunchData
