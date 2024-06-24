@@ -1,4 +1,4 @@
-@immunefi/=lib/forge-poc-templates/
+@oz/=lib/openzeppelin-contracts/contracts/
 forge-std/=lib/forge-std/src/
 solady/=lib/solady/src/
 src/=src/
