@@ -1,4 +1,4 @@
 @oz/=lib/openzeppelin-contracts/contracts/
 forge-std/=lib/forge-std/src/
 solady/=lib/solady/src/
-src/=src/
+@bio=lib/bio-contracts/contracts/

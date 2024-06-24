@@ -1,30 +1,34 @@
 pragma solidity ^0.8.23;
 
-import { ITokenVesting } from "./interfaces/ITokenVesting.sol";
+import { TokenVesting } from "@bio/vesting/TokenVesting.sol";
+
 
 // import { BioToken } from "../../BioToken.sol";
 import { XDAOToken } from "./XDAOToken.sol";
 
 abstract contract BaseLaunchpad {
     enum AplicationStatus { NULL, SUBMITTED, ACCEPTED, REJECTED, COMPLETED, REMOVED, LAUNCHED }
-    // slot 0
+    // slot
+    bytes32 constant _VESTING_ADMIN_ROLE = bytes32(0x00);
+    // slot
     uint16 constant _BPS_COEFFICIENT = 10_000; // xDAO tokens reserved for BIO liquidity pairs
     uint16 constant _MAX_LIQUIDITY_RESERVES_BPS = 1_000; // 10% -  xDAO tokens reserved for BIO liquidity pairs
     uint16 constant _MAX_OPERATOR_REWARD_BPS = 8_000; // 80% - max 80% of a token can go org running a cohort. namely bioDAOs for their IPTs
     uint16 constant _MAX_CURATOR_AUCTION_RESERVE_BPS = 2_090; // 20% - xDAO tokens reserved for Curators to applicants
     XDAOToken public bio = XDAOToken(address(0xB10));
-    // slot 1
-    ITokenVesting public vbio = ITokenVesting(address(0xeB10));
+    // slot
+    TokenVesting public vbio = TokenVesting(address(0xeB10));
     XDAOToken public usdc = XDAOToken(address(0x05D));
     uint96 public nextApplicantId; // global applicant ID pool
-    // slot 2
+    // slot
     address public owner; // BIO Network governance manager
     uint96 public operatorBIOReward; // BIO per launch() in a program. TODO should be pro-rata curator reward too?
-    // slot 3
+    // slot
     address public bioBank; // BIO Network liquidity manager
     // uint96 curatorBIOReward; // BIO per 10,000 BIO staked e.g. 10 / BPS_COEFFICIENT. Positions < 10,000 wont get curation rewards
-    // slot 4
+    // slot
     address public curatorLaunchCode = address(0x0); // default launch code for private curator auctions on accept()
+    
 
     // bioDAOs. ID = uint64 to encode with curator address into uint256
     mapping(uint96 => Application) public apps; // bioDAO entry in launchpad registry
@@ -45,7 +49,7 @@ abstract contract BaseLaunchpad {
     event Curate(uint96 indexed applicant, address indexed curator, uint256 amount, uint256 curationID);
     event Uncurate(uint256 indexed curationID);
     event Claim(uint256 indexed curationId, uint256 xdaoAmount);
-    event Launch(uint96 indexed applicant,  address token, uint256 curatorAuctionReserves, uint256 liquidityReserves);
+    event Launch(uint96 indexed applicant, address token, address vestingToken, uint256 curatorAuctionReserves, uint256 liquidityReserves);
     event StartAuction(uint96 indexed applicant, uint16 auctionID, address auction, uint256 amount, uint32 startDate, uint32 endDate);
 
     // Launchpad Admin Events
@@ -65,16 +69,19 @@ abstract contract BaseLaunchpad {
     }
 
     struct Application {
-        // slot 1
+        // slot
         AplicationStatus status;
         uint16 rewardProgramID; // rewards at time of accepted (not applied)
         uint16 nextLaunchID;
         address program;
-        // slot 2
+        // slot
         address governance;
+        // slot
         uint256 totalStaked;
-        // slot 3
+        // slot
         address token;
+        // slot
+        address vestingContract;
     }
 
     struct AppRewards {

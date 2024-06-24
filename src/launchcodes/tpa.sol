@@ -24,6 +24,7 @@ interface ILaunchpad {
 
 contract LaunchCodeFactory is ILaunchFactory {
     bytes32 private constant _VESTING_ROLE = keccak256("VESTING_CREATOR_ROLE"); // see TokenVesting.sol
+    bytes32 private constant _ADMIN_ROLE = bytes32(0x00); // see OZ AccessRoles.sol
 
     address _launchpad;
     address _launchImpl;
@@ -36,14 +37,14 @@ contract LaunchCodeFactory is ILaunchFactory {
     }
 
     function launch(Utils.AuctionMetadata calldata meta) external returns(address proxy) {
-        ITokenVesting vesting = ITokenVesting(Clones.clone(_vestingImpl));
+        // ITokenVesting vesting = ITokenVesting(Clones.clone(_vestingImpl));
         proxy = address(Clones.clone(_launchImpl));
 
         XDAOToken(meta.giveToken).transfer(proxy, meta.totalGive); // TODO safeTransfer
         // if error revert InsufficientTokensForAuction()
-        vesting.grantRole(_VESTING_ROLE, proxy);
+        // vesting.grantRole(_VESTING_ROLE, proxy);
 
-        ILaunchCode(proxy).initialize(_launchpad, address(vesting), meta);
+        ILaunchCode(proxy).initialize(_launchpad, meta);
     }
 
     /** All creating new factory for new launch codes automatically */
@@ -55,7 +56,7 @@ contract LaunchCodeFactory is ILaunchFactory {
 }
 
 contract ProRata is ILaunchCode {
-    uint32 private constant CLAIM_PERIOD_LENGTH = 7 days;
+    uint32 private constant _CLAIM_PERIOD_LENGTH = 7 days;
     uint128 public totalGive;
     uint128 public totalProRataShares;
     uint256 public totalWant;
@@ -70,7 +71,6 @@ contract ProRata is ILaunchCode {
 
     function initialize(
         address launchpad_,
-        address vesting_,
         Utils.AuctionMetadata calldata meta
     ) public {
         console.log("TPA contract: startTime --", meta.startTime);
@@ -78,7 +78,11 @@ contract ProRata is ILaunchCode {
         console.log("TPA contract: totalGive --", meta.totalGive);
         console.log("TPA contract: wantToken --", meta.wantToken);
         console.log("TPA contract: manager --", meta.manager);
+        address vesting_;
+        (totalProRataShares, vesting_, vestingLength) = abi.decode(meta.customLaunchData, (uint128, address, uint32));
 
+        if(meta.totalGive == 0) revert InvalidAmount();
+        if(vesting_ != address(0)) revert InvalidVestingAddress();
         if(meta.giveToken != address(0)) revert AlreadyInitialized();
         if(meta.giveToken == address(0)) revert InvalidTokenAddress();
         if(XDAOToken(meta.giveToken).balanceOf(address(this)) < meta.totalGive) revert InvalidTokenBalance();
@@ -94,7 +98,6 @@ contract ProRata is ILaunchCode {
         wantToken = XDAOToken(meta.wantToken);
         totalWant = meta.totalWant;
         launchpad = ILaunchpad(launchpad_);
-        (totalProRataShares, vestingLength) = abi.decode(meta.customLaunchData, (uint128, uint32));
     }
 
     function getAuctionData() external view returns(uint32, uint32,  address, uint256, address, uint256) {
@@ -154,7 +157,7 @@ contract ProRata is ILaunchCode {
         // TODO safeTransfer on both
         XDAOToken(wantToken).transferFrom(claimer, address(this), tokensPaid);
         if(!giveToken.transfer(address(vesting), tokensClaimed)) revert ClaimTransferFailed();
-        // vesting.createVestingSchedule(claimer, endTime, 365 days, vestingLength, 86400, false, tokensClaimed);
+        vesting.createVestingSchedule(claimer, endTime, 365 days, vestingLength, 86400, false, tokensClaimed);
     }
 
 
@@ -167,7 +170,7 @@ contract ProRata is ILaunchCode {
 
     function claw(uint256 amount) public {
         _assertGovernance();
-        if(block.timestamp <= endTime + CLAIM_PERIOD_LENGTH) revert ClaimPeriodNotOver();
+        if(block.timestamp <= endTime + _CLAIM_PERIOD_LENGTH) revert ClaimPeriodNotOver();
 
         XDAOToken(giveToken).transfer(governance, amount); // TODO safeTransfer 
     }

@@ -8,8 +8,9 @@ import { XDAOToken } from "./XDAOToken.sol";
 import { BaseLaunchpad } from "./BaseLaunchpad.sol";
 import { Utils } from "./Utils.sol";
 
-import { ITokenVesting } from "./interfaces/ITokenVesting.sol";
+import { TokenVesting } from "@bio/vesting/TokenVesting.sol";
 import { ILaunchFactory, ILaunchCode } from "./interfaces/ILaunchCode.sol";
+import { IERC20Metadata } from "@oz/token/ERC20/extensions/IERC20Metadata.sol";
 
 contract Launchpad is BaseLaunchpad {
     constructor(address _owner, address _bioBank, uint96 _operatorBIOReward, address bio_, address vbio_) {
@@ -17,7 +18,7 @@ contract Launchpad is BaseLaunchpad {
         bioBank = _bioBank;
         operatorBIOReward = _operatorBIOReward;
         if(bio_ != address(0)) bio = XDAOToken(bio_);
-        if(vbio_ != address(0)) vbio = ITokenVesting(vbio_);
+        if(vbio_ != address(0)) vbio = TokenVesting(vbio_);
     }
 
     /**
@@ -97,7 +98,8 @@ contract Launchpad is BaseLaunchpad {
             rewardProgramID: 0,
             totalStaked: 0,
             governance: address(0),
-            token: address(0)
+            token: address(0),
+            vestingContract: address(0)
         });
         
         nextApplicantId++;
@@ -157,7 +159,7 @@ contract Launchpad is BaseLaunchpad {
         uint256 bioReward = operatorBIOReward * c / apps[appID].totalStaked;
         bio.mint(address(vbio), bioReward);
         // vest BIO linearly for 1 year released daily
-        vbio.createVestingSchedule(curator, block.timestamp, 0, 365 days, 86400, true, bioReward);
+        vbio.createVestingSchedule(curator, block.timestamp, 0, 365 days, 60, true, bioReward);
 
         auctions[appID][0].call(abi.encodeWithSelector(ILaunchCode.claim.selector, curationID, c));
         
@@ -245,7 +247,7 @@ contract Launchpad is BaseLaunchpad {
         _assertAppStatus(apps[appID].status, AplicationStatus.SUBMITTED);
         if(curatorLaunchCode == address(0)) revert LaunchesPaused();
 
-        bytes memory customData;
+        bytes memory customData = abi.encode(apps[appID].totalStaked, apps[appID].vestingContract, 31536000); // 6 years in seconds
         (address xdaoToken, uint256 curatorRewards) = _deployNewToken(appID, meta);
 
         address auction = _startAuction(appID, true, Utils.AuctionMetadata({
@@ -269,6 +271,12 @@ contract Launchpad is BaseLaunchpad {
         // TODO better token template. will be base token for all DAOs in our ecosystem
         // mintable by reactor+governance, L3s, NON-Transferrable until PUBLIC Auction, distribute 6.9% to reactor every time minted
         XDAOToken xdaoToken = new XDAOToken(meta.name, meta.symbol);
+        TokenVesting vesting = new TokenVesting(
+            address(bio),
+            string.concat("v", meta.name),
+            string.concat("v", meta.symbol),
+            a.governance
+        );
 
         // TODO rewardID at time of submit() or accept()??
         ProgramRewards memory rates = pRewards[a.program][a.rewardProgramID];
@@ -280,11 +288,14 @@ contract Launchpad is BaseLaunchpad {
 
         rewards[appID] = r;
         a.token = address(xdaoToken);
+        a.vestingContract = address(vesting);
         a.status = AplicationStatus.ACCEPTED; // technically belongs in accept() before _deployToken but gas efficient here
         apps[appID] = a;
 
         emit SetApplicantStatus(appID, AplicationStatus.SUBMITTED, AplicationStatus.ACCEPTED);
-        emit Launch(appID, address(xdaoToken), r.totalCuratorAuction, r.totalLiquidityReserves);
+        emit Launch(appID, address(xdaoToken), address(vesting), r.totalCuratorAuction, r.totalLiquidityReserves);
+
+        vesting.beginDefaultAdminTransfer(a.governance); // give them full admin access
 
         return (address(xdaoToken), r.totalCuratorAuction);
     }
@@ -331,7 +342,7 @@ contract Launchpad is BaseLaunchpad {
     }
 
     /// @notice lets bio governance allow DAOs that didnt launch through this contract to use it for future token launches
-    function setExoDAO(address program, address newXDAO, address token) public {
+    function setExoDAO(address program, address newXDAO, address token, address vestingContract) public {
         _assertOwner();
 
         apps[nextApplicantId] = Application({
@@ -341,7 +352,8 @@ contract Launchpad is BaseLaunchpad {
             rewardProgramID: programs[program].nextRewardId - 1,
             totalStaked: 0,
             governance: newXDAO,
-            token: token
+            token: token,
+            vestingContract: vestingContract
         });
         
         nextApplicantId++;
