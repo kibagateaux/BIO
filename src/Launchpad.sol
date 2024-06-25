@@ -24,8 +24,8 @@ contract Launchpad is BaseLaunchpad {
     /**
         bioDAO Actions - submit, launch
     */
-    function _assertAppOwner(address governance) internal view {
-        if(governance != msg.sender) revert NotApplicationOwner();
+    function _assertAppManager(address manager) internal view {
+        if(manager != msg.sender) revert NotApplicationOwner();
     }
 
     function _assertAppStatus(AplicationStatus currentStatus, AplicationStatus targetStatus) internal pure{
@@ -37,7 +37,7 @@ contract Launchpad is BaseLaunchpad {
     /// @dev TODO add reentrancy
     function launch(uint96 appID, Utils.AuctionMetadata memory meta) public returns(address) {
         _assertAppStatus(apps[appID].status, AplicationStatus.COMPLETED);
-        _assertAppOwner(apps[appID].governance);
+        _assertAppManager(apps[appID].manager);
         
         apps[appID].status = AplicationStatus.LAUNCHED;
 
@@ -51,7 +51,7 @@ contract Launchpad is BaseLaunchpad {
     /// @dev TODO add reentrancy
     function startAuction(uint96 appID, Utils.AuctionMetadata memory meta) public returns(address) {
         _assertAppStatus(apps[appID].status, AplicationStatus.LAUNCHED);
-        _assertAppOwner(apps[appID].governance);
+        _assertAppManager(apps[appID].manager);
         return _startAuction(appID, false, meta);
     }
 
@@ -69,7 +69,7 @@ contract Launchpad is BaseLaunchpad {
         (bool success, bytes memory result) = meta.launchCode.call(
             abi.encodeWithSelector(
                 ILaunchFactory.launch.selector,
-                abi.encode(meta)
+                meta
             )
         );
 
@@ -80,6 +80,14 @@ contract Launchpad is BaseLaunchpad {
 
             a.nextLaunchID++;
             apps[appID] = a;
+            
+            // give new auction ability to create vesting schedules.
+            // try(TokenVesting(apps[appID].vestingContract).grantRole(_VESTING_ROLE, auction)) {
+            //     // if revert either 1) non launchpad-bioDAO added in later
+            //     // or 2) bioDAO ejected and runs their own token now
+            // } catch {
+            //     emit FailedToVest(appID, apps[appID].vestingContract, auction);
+            // }
 
             return auction;
         } else {
@@ -97,7 +105,7 @@ contract Launchpad is BaseLaunchpad {
             //
             rewardProgramID: 0,
             totalStaked: 0,
-            governance: address(0),
+            manager: address(0), // todo default to bioNetwork or program?
             token: address(0),
             vestingContract: address(0)
         });
@@ -105,6 +113,15 @@ contract Launchpad is BaseLaunchpad {
         nextApplicantId++;
 
         emit SubmitApp(program, id, ipfsHash);
+    }
+
+    function eject(uint96 appID) public {
+        _assertAppManager(apps[appID].manager);
+        _assertAppStatus(apps[appID].status, AplicationStatus.LAUNCHED);
+        // release bioDAO infra from BIO Launchpad
+        // transfer token + vesting admin roles
+        // what else?
+        // 
     }
 
     /*
@@ -133,7 +150,7 @@ contract Launchpad is BaseLaunchpad {
         if(apps[appID].status == AplicationStatus.ACCEPTED 
             ||  apps[appID].status == AplicationStatus.COMPLETED
             ||  apps[appID].status == AplicationStatus.LAUNCHED) revert MustClaimOnceLaunched();
-        if(msg.sender != curator) revert NotCurator();
+        // if(msg.sender != curator) revert NotCurator();
 
         // remove from total count for rewards. Not in _removeCuration bc claim() needs to keep total consistently calculate curator rewards %.
         apps[appID].totalStaked -= uint128(curations[curationID]);
@@ -141,18 +158,20 @@ contract Launchpad is BaseLaunchpad {
         _removeCuration(curationID, curator);
         
         emit Uncurate(curationID);
-
     }
 
     function claim(uint256 curationID) public {
         (uint96 appID, address curator) = _decodeID(curationID);
-        _assertAppStatus(apps[appID].status, AplicationStatus.LAUNCHED);
+        // _assertAppStatus(apps[appID].status, AplicationStatus.LAUNCHED);
+        // since auction is on accept they need to be able to claim before it actually launches()
+        // maybe 2 reward stages, ACCEPTED - private auction. LAUNCHED - BIO + public auction discount?
+        _assertAppStatus(apps[appID].status, AplicationStatus.ACCEPTED);
         
         uint256 c = curations[curationID];
-        if(msg.sender != curator) revert NotCurator();
+        // if(msg.sender != curator) revert NotCurator();
         if(c == 0) revert RewardsAlreadyClaimed();
 
-        _removeCuration(curationID, curator);
+        _removeCuration(curationID, curator); // wouldnt want to delete if we use later for launchcodes e.g. perpetual discounts to stakers for lifetime of bioDAO
 
         // TODO give BIO emission?
         // $300k to operator = ~16.9M BIO. 30% of supply staking = ~1B BIO. across 5 bioDAOs = ~8% return over duration (~1 yr)
@@ -172,9 +191,10 @@ contract Launchpad is BaseLaunchpad {
         uint96 id1 = uint96(appID);
         uint160 id2 = uint160(curator);
         // Shift the second address value to the left by 160 bits (20 bytes)
-        uint96 encodedValue = uint96(id2 << 160);
+        // uint96 encodedValue = uint96(id1 << 160);
         // Add the first address value to the encoded value
-        return uint256(id1 |= encodedValue);
+        // return uint256(id1 |= id2);
+        return 0;
     }
 
     function _decodeID(uint256 curationID) public pure returns (uint96 appID, address curator) {
@@ -213,14 +233,15 @@ contract Launchpad is BaseLaunchpad {
         /**
     * @notice - The application that program operator wants to mark as completing the program and unlock Launchpad features
     * @param appID - The application that program operator wants to mark as complete
-    * @param governance - multisig created by bioDAO during program to use for ongoing Launchpad operations e.g. launch()
+    * @param manager - multisig created by bioDAO during program to use for ongoing Launchpad operations e.g. launch()
      */
-    function graduate(uint96 appID, address governance) public {
+    function graduate(uint96 appID, address manager) public {
+        // TODO manager needs to be set in accept() so we can send funds to them
         _assertProgramOperator(appID);
         _assertAppStatus(apps[appID].status, AplicationStatus.ACCEPTED);
 
         apps[appID].status = AplicationStatus.COMPLETED;
-        apps[appID].governance = governance;
+        apps[appID].manager = manager;
         emit SetApplicantStatus(appID, AplicationStatus.ACCEPTED, AplicationStatus.COMPLETED);
     }
 
@@ -247,8 +268,8 @@ contract Launchpad is BaseLaunchpad {
         _assertAppStatus(apps[appID].status, AplicationStatus.SUBMITTED);
         if(curatorLaunchCode == address(0)) revert LaunchesPaused();
 
-        bytes memory customData = abi.encode(apps[appID].totalStaked, apps[appID].vestingContract, 31536000); // 6 years in seconds
         (address xdaoToken, uint256 curatorRewards) = _deployNewToken(appID, meta);
+        bytes memory customData = abi.encode(apps[appID].totalStaked, apps[appID].vestingContract, 31536000); // 6 years in seconds
 
         address auction = _startAuction(appID, true, Utils.AuctionMetadata({
             launchCode: curatorLaunchCode,
@@ -259,7 +280,8 @@ contract Launchpad is BaseLaunchpad {
             totalWant: uint128(meta.valuation * curatorRewards * 1e8 / meta.maxSupply), 
             startTime: uint32(block.timestamp + 1 days),
             endTime: uint32(block.timestamp + 8 days),
-            manager: apps[appID].governance, // TODO operator?
+            // manager: apps[appID].manager, // TODO add manger param to accept()
+            manager: owner,
             customLaunchData: customData
         }));
 
@@ -269,13 +291,13 @@ contract Launchpad is BaseLaunchpad {
     function _deployNewToken(uint96 appID, OrgMetadata calldata meta) private returns(address, uint256) {
         Application memory a = apps[appID];
         // TODO better token template. will be base token for all DAOs in our ecosystem
-        // mintable by reactor+governance, L3s, NON-Transferrable until PUBLIC Auction, distribute 6.9% to reactor every time minted
+        // mintable by reactor+manager, L3s, NON-Transferrable until PUBLIC Auction, distribute 6.9% to reactor every time minted
         XDAOToken xdaoToken = new XDAOToken(meta.name, meta.symbol);
         TokenVesting vesting = new TokenVesting(
             address(bio),
             string.concat("v", meta.name),
             string.concat("v", meta.symbol),
-            a.governance
+            a.manager
         );
 
         // TODO rewardID at time of submit() or accept()??
@@ -295,7 +317,8 @@ contract Launchpad is BaseLaunchpad {
         emit SetApplicantStatus(appID, AplicationStatus.SUBMITTED, AplicationStatus.ACCEPTED);
         emit Launch(appID, address(xdaoToken), address(vesting), r.totalCuratorAuction, r.totalLiquidityReserves);
 
-        vesting.beginDefaultAdminTransfer(a.governance); // give them full admin access
+        // TODO manager needs to be set in accept() so we can send funds to them
+        // vesting.beginDefaultAdminTransfer(a.manager); // give them full admin access
 
         return (address(xdaoToken), r.totalCuratorAuction);
     }
@@ -341,7 +364,7 @@ contract Launchpad is BaseLaunchpad {
         emit SetProgram(operator, allowed);
     }
 
-    /// @notice lets bio governance allow DAOs that didnt launch through this contract to use it for future token launches
+    /// @notice lets bio manager allow DAOs that didnt launch through this contract to use it for future token launches
     function setExoDAO(address program, address newXDAO, address token, address vestingContract) public {
         _assertOwner();
 
@@ -351,7 +374,7 @@ contract Launchpad is BaseLaunchpad {
             nextLaunchID: 0,
             rewardProgramID: programs[program].nextRewardId - 1,
             totalStaked: 0,
-            governance: newXDAO,
+            manager: newXDAO,
             token: token,
             vestingContract: vestingContract
         });

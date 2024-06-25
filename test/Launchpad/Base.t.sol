@@ -10,7 +10,7 @@ import { IERC20Metadata } from "@oz/token/ERC20/extensions/IERC20Metadata.sol";
 
 
 contract BaseLaunchpadTest is Test {
-    bytes32 constant VESTING_ROLE = keccak256("VESTING_CREATOR_ROLE");
+    bytes32 public constant VESTING_ROLE = keccak256("VESTING_CREATOR_ROLE");
     Launchpad public launchpad;
     BioBank public bioBank;
     address public operator;
@@ -21,6 +21,7 @@ contract BaseLaunchpadTest is Test {
     TokenVesting public vbio;
     XDAOToken public usdc;
     address public curatorAuction;
+    uint96 public operatorReward = 6900000;
 
     function setUp() public virtual {
         bioBank= new BioBank();
@@ -33,7 +34,7 @@ contract BaseLaunchpadTest is Test {
         vbio.beginDefaultAdminTransfer(bioNetwork);
         usdc = new XDAOToken("USDC", "USDC");
 
-        launchpad = new Launchpad(bioNetwork, address(bioBank), 0, address(bio), address(vbio));
+        launchpad = new Launchpad(bioNetwork, address(bioBank), operatorReward, address(bio), address(vbio));
         LaunchCodeFactory factory  = new LaunchCodeFactory();
         address prorata = address(new ProRata());
         address vesting = address(new TokenVesting(address(bio), "xDAO", "vxDAO", address(bioNetwork)));
@@ -100,4 +101,91 @@ contract BaseLaunchpadTest is Test {
         assertEq(address(launchpad.vbio()), address(vbio));
         assertEq(launchpad.owner(), bioNetwork);
     }
+
+    function  test__encodeID_storesAppIdAndCurator(uint96 id, address staker) public {
+        // emit log_named_uint("to encode id 1 ", id);
+        // emit log_named_address("to encode staker 1 ", staker);
+        // emit log_named_uint("encoded id 1 ", encodeTest1(id, staker));
+        // emit log_named_bytes32("encoded id 1 ", bytes32(encodeTest1(id, staker)));
+        uint256 encodedID = launchpad._encodeID(id, staker);
+        // uint256 id1 = encodeTest1(id, staker);
+        // assertEq(id1, encodedId);
+        uint256 id2 = encodeTest2(id, staker);
+        assertEq(id2, encodedID);
+        // emit log_named_uint("encoded id 2 ", encodeTest1(id, staker));
+        // emit log_named_bytes32("encoded id 2 ", bytes32(encodeTest2(id, staker)));
+
+        // emit log_named_uint("encoded id 2 ", encodeTest1(id, staker));
+        
+        // uint256 encodedAddy = uint256(uint160(staker) << 160);
+        // uint256 encodedID = encodeTest1(id, staker);
+
+        // uint96 id1 = uint96(0);
+        // uint160 id2 = uint160(staker);
+
+        // // Shift the second address value to the left by 160 bits (20 bytes)
+        // // uint96 encodedValue = uint96(id1 << 160);
+        // // Add the first address value to the encoded value
+
+        // // Check first 12 bytes (uint96)
+        // assertEq(uint96(encodedID >> 160), id, "First 12 bytes should match uint96");
+        
+        // // Check last 20 bytes (address)
+        // assertEq(address(uint160(encodedID)), staker, "Last 20 bytes should match address");
+        
+        // // ensure contract implementation is correct
+        // uint256 officialEncode = launchpad._encodeID(id, staker);
+        // assertEq(officialEncode, encodedID);
+
+    /// trash
+        // Additional checks
+        // bytes memory encodedBytes = abi.encodePacked(encodedID);
+        
+        // Check each byte of uint96
+        // for (uint i = 0; i < 12; i++) {
+        //     assertEq(encodedBytes[i], bytes1(uint8(id >> (88 - i * 8))), string(abi.encodePacked("Byte ", Strings.toString(i), " of uint96 mismatch")));
+        // }
+        
+        // // Check each byte of address
+        // for (uint i = 0; i < 20; i++) {
+        //     assertEq(encodedBytes[12 + i], bytes1(uint8(uint160(staker) >> (152 - i * 8))), string(abi.encodePacked("Byte ", Strings.toString(12 + i), " of address mismatch")));
+        // }
+    }
+
+    function encodeTest1(uint96 appID, address curator) public  returns (uint256) {
+        bytes32 result;
+        
+        assembly {
+            // Encode uint96 into the first 12 bytes
+            result := appID
+            
+            // Encode address into the last 20 bytes
+            // let addrBytes := and(curator, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
+            result := or(result, shl(96, curator))
+        }
+
+        emit log_named_bytes32("encode test 1 byte", result);
+        emit log_named_uint("encode test 1 uint", uint256(result));
+        return uint256(result);
+    }
+
+
+    function encodeTest2(uint96 appID, address curator) public  returns (uint256) {
+        bytes32 result;
+        
+        assembly {
+            // Encode uint96 into the first 12 bytes
+            // result := appID
+            
+            // Encode address into the last 20 bytes
+            // let addrBytes := and(curator, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
+            result := shl(160, appID)
+            result := or(result, shl(0, curator))
+        }
+
+        emit log_named_bytes32("encode test 2 byte", result);
+        emit log_named_uint("encode test 2 uint", uint256(result));
+        return uint256(result);
+    }
+
 }

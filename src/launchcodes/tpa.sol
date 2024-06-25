@@ -30,17 +30,24 @@ contract LaunchCodeFactory is ILaunchFactory {
     address _launchImpl;
     address _vestingImpl;
 
+    event FactoryClone(address token, uint256 amount);
+    event FactoryClone(Utils.AuctionMetadata meta);
+
     function initialize(address launchpad_, address launchImpl_, address vestingImpl_)  external {
         _launchpad = launchpad_;
         _launchImpl = launchImpl_;
         _vestingImpl = vestingImpl_;
     }
 
-    function launch(Utils.AuctionMetadata calldata meta) external returns(address proxy) {
+    function launch(Utils.AuctionMetadata memory meta) external returns(address proxy) {
         // ITokenVesting vesting = ITokenVesting(Clones.clone(_vestingImpl));
         proxy = address(Clones.clone(_launchImpl));
 
+        emit FactoryClone(meta);
+        // emit FactoryClone(meta.giveToken, XDAOToken(meta.giveToken).balanceOf(address(this)));
+
         XDAOToken(meta.giveToken).transfer(proxy, meta.totalGive); // TODO safeTransfer
+
         // if error revert InsufficientTokensForAuction()
         // vesting.grantRole(_VESTING_ROLE, proxy);
 
@@ -65,7 +72,7 @@ contract ProRata is ILaunchCode {
     uint32 public vestingLength;
     XDAOToken public giveToken;
     XDAOToken public wantToken;
-    address public governance;
+    address public manager;
     ILaunchpad public launchpad;
     ITokenVesting public vesting;
 
@@ -81,14 +88,15 @@ contract ProRata is ILaunchCode {
         address vesting_;
         (totalProRataShares, vesting_, vestingLength) = abi.decode(meta.customLaunchData, (uint128, address, uint32));
 
-        if(meta.totalGive == 0) revert InvalidAmount();
-        if(vesting_ != address(0)) revert InvalidVestingAddress();
-        if(meta.giveToken != address(0)) revert AlreadyInitialized();
+        if(address(giveToken) != address(0)) revert AlreadyInitialized();
         if(meta.giveToken == address(0)) revert InvalidTokenAddress();
-        if(XDAOToken(meta.giveToken).balanceOf(address(this)) < meta.totalGive) revert InvalidTokenBalance();
+        if(vesting_ == address(0)) revert InvalidVestingAddress();
         if(launchpad_ == address(0)) revert InvalidLaunchpad();
+        if(meta.totalGive == 0) revert InvalidAmount();
+        if(meta.manager == address(0)) revert InvalidManagerAddress();
+        if(meta.startTime > meta.endTime) revert InvalidEndTime();
         if(meta.startTime < block.timestamp) revert InvalidStartTime();
-        if(meta.startTime > endTime) revert InvalidEndTime();
+        if(XDAOToken(meta.giveToken).balanceOf(address(this)) < meta.totalGive) revert InvalidTokenBalance();
 
         vesting = ITokenVesting(vesting_);
         giveToken = XDAOToken(meta.giveToken);
@@ -98,6 +106,7 @@ contract ProRata is ILaunchCode {
         wantToken = XDAOToken(meta.wantToken);
         totalWant = meta.totalWant;
         launchpad = ILaunchpad(launchpad_);
+        manager = meta.manager;
     }
 
     function getAuctionData() external view returns(uint32, uint32,  address, uint256, address, uint256) {
@@ -119,8 +128,8 @@ contract ProRata is ILaunchCode {
         return XDAOToken(giveToken).balanceOf(address(this));
     }
 
-    function _assertGovernance() internal {
-        if(msg.sender != governance) revert NotGovernance();
+    function _assertManager() internal {
+        if(msg.sender != manager) revert NotGovernance();
     }
 
     function _assertHasEnded() internal {
@@ -163,16 +172,16 @@ contract ProRata is ILaunchCode {
 
     function withdraw(uint256 amount) public {
         _assertHasEnded();
-        _assertGovernance();
+        _assertManager();
 
-        XDAOToken(wantToken).transfer(governance, amount); // TODO safeTransfer 
+        XDAOToken(wantToken).transfer(manager, amount); // TODO safeTransfer 
     }
 
     function claw(uint256 amount) public {
-        _assertGovernance();
+        _assertManager();
         if(block.timestamp <= endTime + _CLAIM_PERIOD_LENGTH) revert ClaimPeriodNotOver();
 
-        XDAOToken(giveToken).transfer(governance, amount); // TODO safeTransfer 
+        XDAOToken(giveToken).transfer(manager, amount); // TODO safeTransfer 
     }
 
 }

@@ -9,7 +9,8 @@ import { XDAOToken } from "./XDAOToken.sol";
 abstract contract BaseLaunchpad {
     enum AplicationStatus { NULL, SUBMITTED, ACCEPTED, REJECTED, COMPLETED, REMOVED, LAUNCHED }
     // slot
-    bytes32 constant _VESTING_ADMIN_ROLE = bytes32(0x00);
+    bytes32 constant _VESTING_ADMIN_ROLE = bytes32(0x00); // see OZ AccessRoles.sol
+    bytes32 constant _VESTING_ROLE = keccak256("VESTING_CREATOR_ROLE"); // see TokenVesting.sol
     // slot
     uint16 constant _BPS_COEFFICIENT = 10_000; // xDAO tokens reserved for BIO liquidity pairs
     uint16 constant _MAX_LIQUIDITY_RESERVES_BPS = 1_000; // 10% -  xDAO tokens reserved for BIO liquidity pairs
@@ -51,6 +52,7 @@ abstract contract BaseLaunchpad {
     event Claim(uint256 indexed curationId, uint256 xdaoAmount);
     event Launch(uint96 indexed applicant, address token, address vestingToken, uint256 curatorAuctionReserves, uint256 liquidityReserves);
     event StartAuction(uint96 indexed applicant, uint16 auctionID, address auction, uint256 amount, uint32 startDate, uint32 endDate);
+    event FailedToVest(uint96 indexed appID, address indexed vestingContract, address indexed auction);
 
     // Launchpad Admin Events
     event SetProgram(address indexed program, bool approval);
@@ -75,7 +77,7 @@ abstract contract BaseLaunchpad {
         uint16 nextLaunchID;
         address program;
         // slot
-        address governance;
+        address manager;
         // slot
         uint256 totalStaked;
         // slot

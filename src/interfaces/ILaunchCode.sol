@@ -25,6 +25,7 @@ interface ILaunchCode {
     error AlreadyInitialized();
     error InvalidVestingAddress();
     error InvalidTokenAddress();
+    error InvalidManagerAddress();
     error InvalidTokenBalance();
     error InvalidLaunchpad();
     error InvalidStartTime();
