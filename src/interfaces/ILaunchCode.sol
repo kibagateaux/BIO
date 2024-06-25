@@ -12,7 +12,16 @@ interface ILaunchFactory {
 interface ILaunchCode {
     // standard metadata on auction
     function getAuctionData() external view returns(uint32 startTime, uint32 endTime,  address wantToken, uint256 wantAmount, address giveToken, uint256 giveAmount);
-    // creates the public auction for 
+    function vestingContract() external returns(address); // TODO decide btw one of these api. Just address has more use, no one should need vestLength tho
+    function vesting() external returns(address, uint32);
+    function manager() external returns(address);
+    
+    function auctionToken() external returns(address);
+    function purchaseToken() external returns(address);
+    function totalPurchasable() external returns(uint256);
+    function totalAuctionable() external returns(uint128);
+
+    // function getAuctionMetadata() external view returns(address vesting, uint256 vestingLength);
     function initialize(address launchpad, Utils.AuctionMetadata calldata meta) external;
     function claim(uint256 curationID, uint256 staked) external;
     function sweep(address claimer, uint256 amount) external;
@@ -21,6 +30,8 @@ interface ILaunchCode {
     function reward(address claimer, uint256 staked) external returns(uint256, uint256);
     // check if custom launch template data is valid
     // function validateData(bytes[] calldata inputs) external;
+
+    event Claim(address indexed claimer, uint256 received, uint256 paid);
 
     error AlreadyInitialized();
     error InvalidVestingAddress();
@@ -39,4 +50,8 @@ interface ILaunchCode {
     error NotClaimer();
     error ClaimTransferFailed();
     error ClaimPeriodNotOver();
+}
+
+interface ITPA is ILaunchCode {
+    function totalProRataShares() external returns(uint128);
 }

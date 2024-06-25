@@ -34,7 +34,7 @@ contract BaseLaunchpadTest is Test {
         vbio.beginDefaultAdminTransfer(bioNetwork);
         usdc = new XDAOToken("USDC", "USDC");
 
-        launchpad = new Launchpad(bioNetwork, address(bioBank), operatorReward, address(bio), address(vbio));
+        launchpad = new Launchpad(bioNetwork, address(bioBank), operatorReward, address(bio), address(vbio), address(usdc));
         LaunchCodeFactory factory  = new LaunchCodeFactory();
         address prorata = address(new ProRata());
         address vesting = address(new TokenVesting(address(bio), "xDAO", "vxDAO", address(bioNetwork)));
@@ -96,7 +96,7 @@ contract BaseLaunchpadTest is Test {
         assertEq(address(launchpad.bioBank()), address(bioBank));
         assertEq(launchpad.launchCodes(curatorAuction), true);
         assertEq(launchpad.curatorLaunchCode(), curatorAuction);
-        assertEq(launchpad.operatorBIOReward(), 0);
+        assertEq(launchpad.operatorBIOReward(), operatorReward);
         assertEq(address(launchpad.bio()), address(bio));
         assertEq(address(launchpad.vbio()), address(vbio));
         assertEq(launchpad.owner(), bioNetwork);
@@ -107,13 +107,11 @@ contract BaseLaunchpadTest is Test {
         // emit log_named_address("to encode staker 1 ", staker);
         // emit log_named_uint("encoded id 1 ", encodeTest1(id, staker));
         // emit log_named_bytes32("encoded id 1 ", bytes32(encodeTest1(id, staker)));
-        uint256 encodedID = launchpad._encodeID(id, staker);
         // uint256 id1 = encodeTest1(id, staker);
         // assertEq(id1, encodedId);
         uint256 id2 = encodeTest2(id, staker);
-        assertEq(id2, encodedID);
         // emit log_named_uint("encoded id 2 ", encodeTest1(id, staker));
-        // emit log_named_bytes32("encoded id 2 ", bytes32(encodeTest2(id, staker)));
+        emit log_named_bytes32("encoded id 2 ", bytes32(id2));
 
         // emit log_named_uint("encoded id 2 ", encodeTest1(id, staker));
         
@@ -128,28 +126,13 @@ contract BaseLaunchpadTest is Test {
         // // Add the first address value to the encoded value
 
         // // Check first 12 bytes (uint96)
-        // assertEq(uint96(encodedID >> 160), id, "First 12 bytes should match uint96");
+        assertEq(uint96(id2 >> 160), id, "First 12 bytes should match uint96");
         
         // // Check last 20 bytes (address)
-        // assertEq(address(uint160(encodedID)), staker, "Last 20 bytes should match address");
-        
-        // // ensure contract implementation is correct
-        // uint256 officialEncode = launchpad._encodeID(id, staker);
-        // assertEq(officialEncode, encodedID);
+        assertEq(address(uint160(id2)), staker, "Last 20 bytes should match address");
 
-    /// trash
-        // Additional checks
-        // bytes memory encodedBytes = abi.encodePacked(encodedID);
-        
-        // Check each byte of uint96
-        // for (uint i = 0; i < 12; i++) {
-        //     assertEq(encodedBytes[i], bytes1(uint8(id >> (88 - i * 8))), string(abi.encodePacked("Byte ", Strings.toString(i), " of uint96 mismatch")));
-        // }
-        
-        // // Check each byte of address
-        // for (uint i = 0; i < 20; i++) {
-        //     assertEq(encodedBytes[12 + i], bytes1(uint8(uint160(staker) >> (152 - i * 8))), string(abi.encodePacked("Byte ", Strings.toString(12 + i), " of address mismatch")));
-        // }
+        uint256 encodedID = launchpad._encodeID(id, staker);
+        assertEq(id2, encodedID);
     }
 
     function encodeTest1(uint96 appID, address curator) public  returns (uint256) {

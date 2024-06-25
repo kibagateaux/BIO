@@ -40,7 +40,7 @@ contract LaunchCodeFactory is ILaunchFactory {
     }
 
     function launch(Utils.AuctionMetadata memory meta) external returns(address proxy) {
-        // ITokenVesting vesting = ITokenVesting(Clones.clone(_vestingImpl));
+        // ITokenVesting _vestingContract = ITokenVesting(Clones.clone(_vestingImpl));
         proxy = address(Clones.clone(_launchImpl));
 
         emit FactoryClone(meta);
@@ -49,7 +49,7 @@ contract LaunchCodeFactory is ILaunchFactory {
         XDAOToken(meta.giveToken).transfer(proxy, meta.totalGive); // TODO safeTransfer
 
         // if error revert InsufficientTokensForAuction()
-        // vesting.grantRole(_VESTING_ROLE, proxy);
+        // _vestingContract.grantRole(_VESTING_ROLE, proxy);
 
         ILaunchCode(proxy).initialize(_launchpad, meta);
     }
@@ -69,12 +69,12 @@ contract ProRata is ILaunchCode {
     uint256 public totalWant;
     uint32 public startTime;
     uint32 public endTime;
-    uint32 public vestingLength;
+    uint32 internal _vestingLength;
     XDAOToken public giveToken;
     XDAOToken public wantToken;
     address public manager;
     ILaunchpad public launchpad;
-    ITokenVesting public vesting;
+    ITokenVesting internal _vestingContract;
 
     function initialize(
         address launchpad_,
@@ -86,7 +86,7 @@ contract ProRata is ILaunchCode {
         console.log("TPA contract: wantToken --", meta.wantToken);
         console.log("TPA contract: manager --", meta.manager);
         address vesting_;
-        (totalProRataShares, vesting_, vestingLength) = abi.decode(meta.customLaunchData, (uint128, address, uint32));
+        (totalProRataShares, vesting_, _vestingLength) = abi.decode(meta.customLaunchData, (uint128, address, uint32));
 
         if(address(giveToken) != address(0)) revert AlreadyInitialized();
         if(meta.giveToken == address(0)) revert InvalidTokenAddress();
@@ -98,7 +98,7 @@ contract ProRata is ILaunchCode {
         if(meta.startTime < block.timestamp) revert InvalidStartTime();
         if(XDAOToken(meta.giveToken).balanceOf(address(this)) < meta.totalGive) revert InvalidTokenBalance();
 
-        vesting = ITokenVesting(vesting_);
+        _vestingContract = ITokenVesting(vesting_);
         giveToken = XDAOToken(meta.giveToken);
         totalGive = meta.totalGive;
         startTime = meta.startTime;
@@ -119,6 +119,31 @@ contract ProRata is ILaunchCode {
             uint256(totalGive)
         );
     }
+
+    function vestingContract() public view returns(address) {
+        return address(_vestingContract);
+    }
+
+    function vesting() public view returns(address, uint32) {
+        return (address(_vestingContract), _vestingLength);
+    }
+    function auctionToken() external returns(address) {
+        return address(giveToken);
+    }
+
+    function totalAuctionable() external returns(uint128) {
+        return totalGive;
+    }
+
+    function purchaseToken() external returns(address) {
+        return address(wantToken);
+    }
+
+    function totalPurchasable() external returns(uint256) {
+        return totalWant;
+    }
+
+
 
     function claimableWant() public view returns(uint256) {
         return XDAOToken(wantToken).balanceOf(address(this));
@@ -162,11 +187,16 @@ contract ProRata is ILaunchCode {
         _claim(claimer, amount, amount * uint256(totalWant) / uint256(totalGive));
     }
 
-    function _claim(address claimer, uint256 tokensClaimed, uint256 tokensPaid) internal {
+    function _claim(address claimer, uint256 giveAmount, uint256 wantAmount) internal {
         // TODO safeTransfer on both
-        XDAOToken(wantToken).transferFrom(claimer, address(this), tokensPaid);
-        if(!giveToken.transfer(address(vesting), tokensClaimed)) revert ClaimTransferFailed();
-        vesting.createVestingSchedule(claimer, endTime, 365 days, vestingLength, 86400, false, tokensClaimed);
+        XDAOToken(wantToken).transferFrom(claimer, address(this), wantAmount);
+
+        if(!giveToken.transfer(address(_vestingContract), giveAmount)) revert ClaimTransferFailed();
+        _vestingContract.createVestingSchedule(claimer, endTime, 365 days, _vestingLength, 86400, false, giveAmount);
+
+        // dont track claimable want token, manager can claim all.
+
+        emit Claim(claimer, giveAmount, wantAmount);
     }
 
 

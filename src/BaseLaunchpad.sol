@@ -52,7 +52,6 @@ abstract contract BaseLaunchpad {
     event Claim(uint256 indexed curationId, uint256 xdaoAmount);
     event Launch(uint96 indexed applicant, address token, address vestingToken, uint256 curatorAuctionReserves, uint256 liquidityReserves);
     event StartAuction(uint96 indexed applicant, uint16 auctionID, address auction, uint256 amount, uint32 startDate, uint32 endDate);
-    event FailedToVest(uint96 indexed appID, address indexed vestingContract, address indexed auction);
 
     // Launchpad Admin Events
     event SetProgram(address indexed program, bool approval);
@@ -107,6 +106,8 @@ abstract contract BaseLaunchpad {
 
     error InvalidAppStatus(AplicationStatus current, AplicationStatus target);
     error TakeoffFailed();
+    error AuctionVestingFailed();
+    error LaunchCodeClaimFailed();
 
     error LaunchesPaused();
     error BadLaunchCode();

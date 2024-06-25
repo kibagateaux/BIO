@@ -13,12 +13,13 @@ import { ILaunchFactory, ILaunchCode } from "./interfaces/ILaunchCode.sol";
 import { IERC20Metadata } from "@oz/token/ERC20/extensions/IERC20Metadata.sol";
 
 contract Launchpad is BaseLaunchpad {
-    constructor(address _owner, address _bioBank, uint96 _operatorBIOReward, address bio_, address vbio_) {
+    constructor(address _owner, address _bioBank, uint96 _operatorBIOReward, address _bio, address _vbio, address _usdc) {
         owner = _owner;
         bioBank = _bioBank;
+        usdc = XDAOToken(_usdc);
         operatorBIOReward = _operatorBIOReward;
-        if(bio_ != address(0)) bio = XDAOToken(bio_);
-        if(vbio_ != address(0)) vbio = TokenVesting(vbio_);
+        if(_bio != address(0)) bio = XDAOToken(_bio);
+        if(_vbio != address(0)) vbio = TokenVesting(_vbio);
     }
 
     /**
@@ -82,12 +83,16 @@ contract Launchpad is BaseLaunchpad {
             apps[appID] = a;
             
             // give new auction ability to create vesting schedules.
-            // try(TokenVesting(apps[appID].vestingContract).grantRole(_VESTING_ROLE, auction)) {
-            //     // if revert either 1) non launchpad-bioDAO added in later
-            //     // or 2) bioDAO ejected and runs their own token now
-            // } catch {
-            //     emit FailedToVest(appID, apps[appID].vestingContract, auction);
-            // }
+            // TokenVesting vesting = TokenVesting(apps[appID].vestingContract.);
+            (bool success2, bytes memory result2) = apps[appID].vestingContract.call(
+                abi.encodeWithSignature(
+                    "grantRole(bytes32,address)",
+                    _VESTING_ROLE,
+                    auction
+                )
+            );
+
+            if (!success2) revert AuctionVestingFailed();
 
             return auction;
         } else {
@@ -130,14 +135,15 @@ contract Launchpad is BaseLaunchpad {
     function curate(uint96 appID, uint96 amount) public returns(uint256 curationID) {
         if(amount == 0) revert MustStakeOver0BIO();
         _assertAppStatus(apps[appID].status, AplicationStatus.SUBMITTED);
-        if(vbioLocked[msg.sender] + amount > vbio.balanceOf(msg.sender))  revert InsufficientVbioBalance();
+        uint256 newLockedBalance = vbioLocked[msg.sender] + amount;
+        if(newLockedBalance > vbio.balanceOf(msg.sender))  revert InsufficientVbioBalance();
 
         curationID = _encodeID(appID, msg.sender);
         unchecked {
             // pratically wont overflow bc dispersion and uint checks on VBIO contract
             curations[curationID] = amount;
             apps[appID].totalStaked += amount;
-            vbioLocked[msg.sender] += amount;
+            vbioLocked[msg.sender] = newLockedBalance;
         }
 
         emit Curate(appID, msg.sender, amount, curationID);
@@ -175,32 +181,31 @@ contract Launchpad is BaseLaunchpad {
 
         // TODO give BIO emission?
         // $300k to operator = ~16.9M BIO. 30% of supply staking = ~1B BIO. across 5 bioDAOs = ~8% return over duration (~1 yr)
-        uint256 bioReward = operatorBIOReward * c / apps[appID].totalStaked;
-        bio.mint(address(vbio), bioReward);
+        // uint256 bioReward = operatorBIOReward * c / apps[appID].totalStaked;
+        // bio.mint(address(vbio), bioReward);
         // vest BIO linearly for 1 year released daily
-        vbio.createVestingSchedule(curator, block.timestamp, 0, 365 days, 60, true, bioReward);
+        // vbio.createVestingSchedule(curator, block.timestamp, 0, 365 days, 60, true, bioReward);
 
-        auctions[appID][0].call(abi.encodeWithSelector(ILaunchCode.claim.selector, curationID, c));
+        (bool success, bytes memory result) = auctions[appID][0].call(abi.encodeWithSelector(ILaunchCode.claim.selector, curationID, c));
+        if(!success) revert LaunchCodeClaimFailed();
         
         emit Claim(curationID, bioReward);
     }
     
 
     // TODO fact check bitshifts. AI generated and cant be fucked to check rn
-    function _encodeID(uint96 appID, address curator) public pure returns (uint256) {
-        uint96 id1 = uint96(appID);
-        uint160 id2 = uint160(curator);
-        // Shift the second address value to the left by 160 bits (20 bytes)
-        // uint96 encodedValue = uint96(id1 << 160);
-        // Add the first address value to the encoded value
-        // return uint256(id1 |= id2);
-        return 0;
+    function _encodeID(uint96 appID, address curator) public pure returns (uint256  result) {
+        // appID as first 12 bytes (shift 160 bits from end)
+        assembly {
+            result := shl(160, appID)
+            result := or(result, shl(0, curator))
+        }
     }
 
     function _decodeID(uint256 curationID) public pure returns (uint96 appID, address curator) {
-        appID = uint96(curationID);
+        appID = uint96(curationID >> 160);
         // Shift the value to the right by 64 bits and cast to an address
-        curator = address(uint160(curationID >> 96));
+        curator = address(uint160(curationID));
     }
 
     function _removeCuration(uint256 cID, address curator) internal {
@@ -318,6 +323,7 @@ contract Launchpad is BaseLaunchpad {
         emit Launch(appID, address(xdaoToken), address(vesting), r.totalCuratorAuction, r.totalLiquidityReserves);
 
         // TODO manager needs to be set in accept() so we can send funds to them
+        // Or move this to separate eject() function with token ownership. I kinda like the exit rights for bioDAOs
         // vesting.beginDefaultAdminTransfer(a.manager); // give them full admin access
 
         return (address(xdaoToken), r.totalCuratorAuction);
