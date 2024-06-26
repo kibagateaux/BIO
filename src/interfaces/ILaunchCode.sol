@@ -16,10 +16,10 @@ interface ILaunchCode {
     function vesting() external returns(address, uint32);
     function manager() external returns(address);
     
-    function auctionToken() external returns(address);
-    function purchaseToken() external returns(address);
-    function totalPurchasable() external returns(uint256);
-    function totalAuctionable() external returns(uint128);
+    function sellToken() external returns(address);
+    function buyToken() external returns(address);
+    function totalBuyAmount() external returns(uint256);
+    function totalSellAmount() external returns(uint128);
 
     // function getAuctionMetadata() external view returns(address vesting, uint256 vestingLength);
     function initialize(address launchpad, Utils.AuctionMetadata calldata meta) external;
@@ -42,6 +42,7 @@ interface ILaunchCode {
     error InvalidStartTime();
     error InvalidEndTime();
     error InvalidAmount();
+    error InvalidVestLength();
     
 
     error NotOpen();

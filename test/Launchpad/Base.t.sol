@@ -103,71 +103,30 @@ contract BaseLaunchpadTest is Test {
     }
 
     function  test__encodeID_storesAppIdAndCurator(uint96 id, address staker) public {
-        // emit log_named_uint("to encode id 1 ", id);
-        // emit log_named_address("to encode staker 1 ", staker);
-        // emit log_named_uint("encoded id 1 ", encodeTest1(id, staker));
-        // emit log_named_bytes32("encoded id 1 ", bytes32(encodeTest1(id, staker)));
-        // uint256 id1 = encodeTest1(id, staker);
-        // assertEq(id1, encodedId);
         uint256 id2 = encodeTest2(id, staker);
-        // emit log_named_uint("encoded id 2 ", encodeTest1(id, staker));
+
         emit log_named_bytes32("encoded id 2 ", bytes32(id2));
 
-        // emit log_named_uint("encoded id 2 ", encodeTest1(id, staker));
-        
-        // uint256 encodedAddy = uint256(uint160(staker) << 160);
-        // uint256 encodedID = encodeTest1(id, staker);
-
-        // uint96 id1 = uint96(0);
-        // uint160 id2 = uint160(staker);
-
-        // // Shift the second address value to the left by 160 bits (20 bytes)
-        // // uint96 encodedValue = uint96(id1 << 160);
-        // // Add the first address value to the encoded value
-
-        // // Check first 12 bytes (uint96)
+        // Check first 12 bytes (uint96)
         assertEq(uint96(id2 >> 160), id, "First 12 bytes should match uint96");
         
-        // // Check last 20 bytes (address)
+        // Check last 20 bytes (address)
         assertEq(address(uint160(id2)), staker, "Last 20 bytes should match address");
 
         uint256 encodedID = launchpad._encodeID(id, staker);
         assertEq(id2, encodedID);
     }
 
-    function encodeTest1(uint96 appID, address curator) public  returns (uint256) {
-        bytes32 result;
-        
-        assembly {
-            // Encode uint96 into the first 12 bytes
-            result := appID
-            
-            // Encode address into the last 20 bytes
-            // let addrBytes := and(curator, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
-            result := or(result, shl(96, curator))
-        }
-
-        emit log_named_bytes32("encode test 1 byte", result);
-        emit log_named_uint("encode test 1 uint", uint256(result));
-        return uint256(result);
-    }
-
 
     function encodeTest2(uint96 appID, address curator) public  returns (uint256) {
         bytes32 result;
-        
         assembly {
             // Encode uint96 into the first 12 bytes
-            // result := appID
-            
-            // Encode address into the last 20 bytes
-            // let addrBytes := and(curator, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
             result := shl(160, appID)
+            // Encode address into the last 20 bytes
+            // reverse bits
             result := or(result, shl(0, curator))
         }
-
-        emit log_named_bytes32("encode test 2 byte", result);
-        emit log_named_uint("encode test 2 uint", uint256(result));
         return uint256(result);
     }
 

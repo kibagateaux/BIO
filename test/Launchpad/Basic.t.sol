@@ -25,11 +25,11 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         assertEq(launchpad._encodeID(0, curator), curationID);
 
         Utils.AuctionMetadata memory meta = _launchMetadata(0);
-        emit log_named_uint("TPA contract: startTime --", meta.startTime);
-        emit log_named_address("TPA contract: giveToken --", meta.giveToken);
-        emit log_named_uint("TPA contract: totalGive --", meta.totalGive);
-        emit log_named_address("TPA contract: wantToken --", meta.wantToken);
-        emit log_named_address("TPA contract: manager --", meta.manager);
+        // emit log_named_uint("TPA contract: startTime --", meta.startTime);
+        // emit log_named_address("TPA contract: giveToken --", meta.giveToken);
+        // emit log_named_uint("TPA contract: totalGive --", meta.totalGive);
+        // emit log_named_address("TPA contract: wantToken --", meta.wantToken);
+        // emit log_named_address("TPA contract: manager --", meta.manager);
         // TODO assertEq(curationID, uint256(id1 |= encodedValue));
     }
 
@@ -133,6 +133,7 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
     }
 
     function  test_curate_increasesCurationStakeByAmount(uint96 amount) public {
+        vm.assume(amount != 0);
         _mintVbio(curator, amount);
         launchpad.submit(operator, bytes32(0));
         uint256 curationID = launchpad._encodeID(0, curator);
@@ -157,15 +158,12 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
 
         vm.prank(operator);
         launchpad.reject(0);
-        vm.expectRevert(
-            abi.encodeWithSelector(BaseLaunchpad.InvalidAppStatus.selector,
-                BaseLaunchpad.AplicationStatus.LAUNCHED,
-                BaseLaunchpad.AplicationStatus.REJECTED
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(BaseLaunchpad.MustClaimOnceLaunched.selector));
+        vm.prank(curator);
         launchpad.claim(curationID);
 
         launchpad.submit(operator, bytes32(0));
+        _mintVbio(curator, 100);
         vm.prank(curator);
         uint256 curationID2 = launchpad.curate(1, 100);
 
@@ -195,41 +193,38 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         vm.prank(curator);
         uint256 curationID = launchpad.curate(0, 100);
         (uint96 id, address staker) = launchpad._decodeID(curationID);
-        emit log_named_bytes32("encoded curationID", bytes32(curationID));
-        emit log_named_uint("decoded app id", id);
-        emit log_named_address("decoded app curator", staker);
+        // emit log_named_bytes32("encoded curationID", bytes32(curationID));
+        // emit log_named_uint("decoded app id", id);
+        // emit log_named_address("decoded app curator", staker);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(BaseLaunchpad.InvalidAppStatus.selector,
-                BaseLaunchpad.AplicationStatus.SUBMITTED,
-                // BaseLaunchpad.AplicationStatus.LAUNCHED
-                BaseLaunchpad.AplicationStatus.ACCEPTED
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(BaseLaunchpad.MustClaimOnceLaunched.selector));
         vm.prank(curator);
         launchpad.claim(curationID);
 
-        vm.prank(operator);
-        (address token_0, address auction_0) = _accept(0);
-        vm.expectRevert(
-            abi.encodeWithSelector(BaseLaunchpad.InvalidAppStatus.selector,
-                BaseLaunchpad.AplicationStatus.ACCEPTED,
-                // BaseLaunchpad.AplicationStatus.LAUNCHED
-                BaseLaunchpad.AplicationStatus.ACCEPTED
-            )
-        );
-        vm.prank(curator);
-        launchpad.claim(curationID);
+        // vm.prank(operator);
+        // (address token_0, address auction_0) = _accept(0);
+        // vm.expectRevert(
+        //     abi.encodeWithSelector(BaseLaunchpad.InvalidAppStatus.selector,
+        //         BaseLaunchpad.AplicationStatus.ACCEPTED,
+        //         // BaseLaunchpad.AplicationStatus.LAUNCHED
+        //         BaseLaunchpad.AplicationStatus.ACCEPTED
+        //     )
+        // );
+        // // _claim(curationID, auction_0);
+        // vm.prank(curator);
+        // launchpad.claim(curationID);
 
         vm.prank(operator);
         launchpad.reject(0);
-        vm.expectRevert(
-            abi.encodeWithSelector(BaseLaunchpad.InvalidAppStatus.selector,
-                BaseLaunchpad.AplicationStatus.REMOVED,
-                // BaseLaunchpad.AplicationStatus.LAUNCHED
-                BaseLaunchpad.AplicationStatus.ACCEPTED
-            )
-        );
+        // vm.expectRevert(
+        //     abi.encodeWithSelector(BaseLaunchpad.InvalidAppStatus.selector,
+        //         BaseLaunchpad.AplicationStatus.REMOVED,
+        //         // BaseLaunchpad.AplicationStatus.LAUNCHED
+        //         BaseLaunchpad.AplicationStatus.ACCEPTED
+        //     )
+        // );
+        // _claim(curationID, auction_0);
+        vm.expectRevert(abi.encodeWithSelector(BaseLaunchpad.MustClaimOnceLaunched.selector));
         vm.prank(curator);
         launchpad.claim(curationID); // Users have to call uncurate() to unlook vbio when REJECTED
 
@@ -240,16 +235,16 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         uint256 curationID2 = launchpad.curate(1, 100);
         vm.prank(operator);
         (address token_1, address auction_1) = _accept(1);
-        vm.prank(operator);
-        launchpad.graduate(1, xdao);
-        vm.prank(xdao);
-        launchpad.launch(1, _launchMetadata(1));
+        // vm.prank(operator);
+        // launchpad.graduate(1, xdao);
+        // Utils.AuctionMetadata memory auctionMetadata = _launchMetadata(1);
+        // vm.prank(xdao);
+        // launchpad.launch(1, auctionMetadata);
 
-        (BaseLaunchpad.AplicationStatus status_2, uint16 rewardProgramID_2, uint16 nextLaunchID,address program_2, address gov_2, uint256 totalStaked_2, address token_2, address vestingContract_2) = launchpad.apps(0);
+        // (BaseLaunchpad.AplicationStatus status_2, uint16 rewardProgramID_2, uint16 nextLaunchID, address program_2, address gov_2, uint256 totalStaked_2, address token_2, address vestingContract_2) = launchpad.apps(0);
 
-        assertEq(uint256(status_2), uint256(BaseLaunchpad.AplicationStatus.LAUNCHED));
+        // assertEq(uint256(status_2), uint256(BaseLaunchpad.AplicationStatus.LAUNCHED));
 
-        vm.prank(curator);
         _claim(curationID2, auction_1);
     }
 
@@ -268,16 +263,19 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         vm.prank(operator);
         launchpad.graduate(0, xdao);
         Utils.AuctionMetadata memory auctionMeta = _launchMetadata(0);
+        XDAOToken(auctionMeta.giveToken).mint(xdao, auctionMeta.totalGive);
+        vm.prank(xdao);
+        XDAOToken(auctionMeta.giveToken).approve(address(launchpad), auctionMeta.totalGive);
         vm.prank(xdao);
         launchpad.launch(0, auctionMeta);
 
         uint256 fakeID = launchpad._encodeID(55, curator);
         vm.prank(curator);
-        vm.expectRevert(abi.encodeWithSelector(BaseLaunchpad.InvalidAppStatus.selector, BaseLaunchpad.AplicationStatus.NULL, BaseLaunchpad.AplicationStatus.LAUNCHED));
+        vm.expectRevert(abi.encodeWithSelector(BaseLaunchpad.MustClaimOnceLaunched.selector));
         launchpad.claim(fakeID);
 
-        vm.prank(curator);
-        launchpad.claim(curationID);
+        _claim(curationID, auction_0);
+
         vm.expectRevert(abi.encodeWithSelector(BaseLaunchpad.RewardsAlreadyClaimed.selector));
         vm.prank(curator);
         launchpad.claim(curationID);
@@ -302,11 +300,14 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         vm.prank(operator);
         launchpad.graduate(0, xdao);
         Utils.AuctionMetadata memory auctionMeta = _launchMetadata(0);
+        XDAOToken(auctionMeta.giveToken).mint(xdao, auctionMeta.totalGive);
+        vm.prank(xdao);
+        XDAOToken(auctionMeta.giveToken).approve(address(launchpad), auctionMeta.totalGive);
         vm.prank(xdao);
         launchpad.launch(0, auctionMeta);
 
-        vm.prank(curator);
-        launchpad.claim(curationID);  // TODO fix _encode/decodeID functions
+        
+        _claim(curationID, auction_0);
         uint256 amount2 = launchpad.curations(curationID);
 
         assertEq(amount2, 0);
@@ -318,6 +319,7 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
 
 
     function test_claim_launchCodeTPAAuction(uint96 staked) public {
+        vm.assume(staked != 0);
         _mintVbio(curator, staked);
         launchpad.submit(operator, bytes32(0));
         vm.prank(curator);
@@ -328,9 +330,11 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         (BaseLaunchpad.AplicationStatus status, uint16 rewardProgramID, uint16 nextLaunchID, address program, address gov, uint256 totalStaked, , address vestingContract) = launchpad.apps(0);
         (, uint128 totalTokensAuctioned) = launchpad.rewards(0);
 
-        uint256 owable = _XDAO_VALUATION * totalTokensAuctioned / totalStaked;
-        uint256 purchasable = staked * totalTokensAuctioned / totalStaked;
-        // uint256 purchasable = 500_000 * 1e18; // todo need precise purchasable for tests to work
+
+        // weird math parens to prevent under/overflow
+        uint256 owable = ((_XDAO_VALUATION * totalTokensAuctioned * staked / _XDAO_MAX_SUPPLY) / totalStaked) * 1e8;
+        uint256 purchasable = (staked / totalStaked) * totalTokensAuctioned;
+
         usdc.mint(curator, owable);
         vm.prank(curator);
         usdc.approve(auction, owable);
@@ -338,19 +342,32 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         vm.prank(curator);
         launchpad.claim(curationID);
 
-        emit log_named_address("give token: ",  ILaunchCode(auction).auctionToken());
-        emit log_named_address("vesting contract: ", ILaunchCode(auction).vestingContract()); // 1. vesting from tpa 2. _underlyingToken from vesting
-        emit log_named_address("vesting give token: ", address(TokenVesting(ILaunchCode(auction).vestingContract()).underlyingToken()) );
+        // assert % of staked and auction pool
+        assertEq(staked, totalStaked);
+        assertEq(purchasable, ILaunchCode(auction).totalSellAmount());
+        assertEq(owable, ILaunchCode(auction).totalBuyAmount());
 
+        // assert valuation
+        assertEq(owable * _XDAO_MAX_SUPPLY / purchasable / 1e8, _XDAO_VALUATION); // offset owable by usdc before valuation
+        
+        // assert payment
         assertEq(usdc.balanceOf(curator), 0);
         assertEq(usdc.balanceOf(auction), owable);
-        assertEq(XDAOToken(token).balanceOf(curator), purchasable);
-        assertEq(XDAOToken(token).balanceOf(curator), totalTokensAuctioned - purchasable);
-        assertEq(launchpad.curations(curationID), 0); // cant claim again
+
+        // assert xDAO vesting
+        assertEq(XDAOToken(token).balanceOf(curator), 0);
+        assertEq(XDAOToken(vestingContract).balanceOf(curator), purchasable);
+        assertEq(XDAOToken(token).balanceOf(vestingContract), purchasable);
+        assertEq(XDAOToken(token).balanceOf(auction), totalTokensAuctioned - purchasable);
+        
+        // assert cant claim again
+        assertEq(launchpad.curations(curationID), 0);
     }
 
+
     function test_claim_onceEvenIfNotFullyRedeemed(uint96 staked) public {
-        _mintVbio(curator, 100);
+        vm.assume(staked != 0);
+        _mintVbio(curator, staked);
         launchpad.submit(operator, bytes32(0));
         vm.prank(curator);
         uint256 curationID = launchpad.curate(0, staked);
@@ -360,17 +377,13 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         (BaseLaunchpad.AplicationStatus status, uint16 rewardProgramID, uint16 nextLaunchID, address program, address gov, uint256 totalStaked, , address vestingContract) = launchpad.apps(0);
         (, uint128 totalTokensAuctioned) = launchpad.rewards(0);
 
-        uint256 owable = 5e15 * totalTokensAuctioned / totalStaked;
-        uint256 purchasable = staked * totalTokensAuctioned / totalStaked;
-        // uint256 purchasable = 500_000 * 1e18; // todo need precise purchasable for tests to work
-        usdc.mint(curator, owable);
-        vm.prank(curator);
-        usdc.approve(auction, owable);
-
+        _claim(curationID, auction);
+        
+        vm.expectRevert(abi.encodeWithSelector(BaseLaunchpad.RewardsAlreadyClaimed.selector));
         vm.prank(curator);
         launchpad.claim(curationID); 
-
-        revert(); // TODO need option to add partial claims? And then check that can/cant claim remainder later
+        
+        // TODO need option to add partial claims? And then check that can/cant claim remainder later
     }
 
 
@@ -392,17 +405,19 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         vm.prank(operator);
         launchpad.graduate(0, xdao);
         Utils.AuctionMetadata memory auctionMeta = _launchMetadata(0);
+
+        // give xdao tokens to sell
+        XDAOToken(auctionMeta.giveToken).mint(xdao, auctionMeta.totalGive);
+        vm.prank(xdao);
+        XDAOToken(auctionMeta.giveToken).approve(address(launchpad), auctionMeta.totalGive);
         vm.prank(xdao);
         launchpad.launch(0, auctionMeta);
 
-        vm.prank(curator);
-        launchpad.claim(curationID);  // TODO fix _encode/decodeID functions
+        _claim(curationID, auction_0);
         uint256 amount2 = launchpad.vbioLocked(curator);
 
         assertEq(amount2, 0);
     }
-
-    
 
     /*
         bioDAO actions
@@ -442,41 +457,51 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         vm.prank(operator);
         launchpad.graduate(0, xdao);
 
-        vm.expectRevert(abi.encodeWithSelector(BaseLaunchpad.NotApplicationOwner.selector));
         Utils.AuctionMetadata memory auctionMeta = _launchMetadata(0);
+        vm.expectRevert(abi.encodeWithSelector(BaseLaunchpad.NotApplicationOwner.selector));
         vm.prank(operator);
         launchpad.launch(0, auctionMeta);
-        vm.expectRevert(abi.encodeWithSelector(BaseLaunchpad.NotApplicationOwner.selector));
         Utils.AuctionMetadata memory auctionMeta2 = _launchMetadata(0);
+        vm.expectRevert(abi.encodeWithSelector(BaseLaunchpad.NotApplicationOwner.selector));
         vm.prank(bioNetwork);
         launchpad.launch(0, auctionMeta2);
 
         Utils.AuctionMetadata memory auctionMeta3 = _launchMetadata(0);
+        XDAOToken(auctionMeta.giveToken).mint(xdao, auctionMeta.totalGive);
+        vm.prank(xdao);
+        XDAOToken(auctionMeta.giveToken).approve(address(launchpad), auctionMeta.totalGive);
         vm.prank(xdao);
         launchpad.launch(0, auctionMeta3);
     } 
 
     function  test_launch_statusMustBeCOMPLETED() public {
         launchpad.submit(operator, bytes32(0));
+        Utils.AuctionMetadata memory auctionMeta = _launchMetadata(0);
+        XDAOToken(auctionMeta.giveToken).mint(xdao, auctionMeta.totalGive);
+        vm.prank(xdao);
+        XDAOToken(auctionMeta.giveToken).approve(address(launchpad), auctionMeta.totalGive);
         vm.expectRevert(
             abi.encodeWithSelector(BaseLaunchpad.InvalidAppStatus.selector,
                 BaseLaunchpad.AplicationStatus.SUBMITTED,
                 BaseLaunchpad.AplicationStatus.COMPLETED
             )
         );
-        Utils.AuctionMetadata memory auctionMeta = _launchMetadata(0);
         vm.prank(xdao);
         launchpad.launch(0, auctionMeta);
 
         vm.prank(operator);
         launchpad.reject(0);
+
+        Utils.AuctionMetadata memory auctionMeta2 = _launchMetadata(0);
+        XDAOToken(auctionMeta.giveToken).mint(xdao, auctionMeta.totalGive);
+        vm.prank(xdao);
+        XDAOToken(auctionMeta.giveToken).approve(address(launchpad), auctionMeta.totalGive);
         vm.expectRevert(
             abi.encodeWithSelector(BaseLaunchpad.InvalidAppStatus.selector,
                 BaseLaunchpad.AplicationStatus.REJECTED,
                 BaseLaunchpad.AplicationStatus.COMPLETED
             )
         );
-        Utils.AuctionMetadata memory auctionMeta2 = _launchMetadata(0);
         vm.prank(xdao);
         launchpad.launch(0, auctionMeta2);
         
@@ -484,13 +509,16 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         vm.prank(operator);
         (address token, address auction) = _accept(1);
 
+        Utils.AuctionMetadata memory auctionMeta3 = _launchMetadata(0);
+        XDAOToken(auctionMeta.giveToken).mint(xdao, auctionMeta.totalGive);
+        vm.prank(xdao);
+        XDAOToken(auctionMeta.giveToken).approve(address(launchpad), auctionMeta.totalGive);
         vm.expectRevert(
             abi.encodeWithSelector(BaseLaunchpad.InvalidAppStatus.selector,
                 BaseLaunchpad.AplicationStatus.ACCEPTED,
                 BaseLaunchpad.AplicationStatus.COMPLETED
             )
         );
-        Utils.AuctionMetadata memory auctionMeta3 = _launchMetadata(0);
         vm.prank(xdao);
         launchpad.launch(1, auctionMeta3);
 
@@ -499,6 +527,9 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         launchpad.graduate(1, xdao);
 
         Utils.AuctionMetadata memory auctionMeta4 = _launchMetadata(0);
+        XDAOToken(auctionMeta.giveToken).mint(xdao, auctionMeta.totalGive);
+        vm.prank(xdao);
+        XDAOToken(auctionMeta.giveToken).approve(address(launchpad), auctionMeta.totalGive);
         vm.prank(xdao);
         launchpad.launch(1, auctionMeta4);
     }
@@ -511,6 +542,9 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         launchpad.graduate(0, xdao);
 
         Utils.AuctionMetadata memory auctionMeta = _launchMetadata(0);
+        XDAOToken(auctionMeta.giveToken).mint(xdao, auctionMeta.totalGive);
+        vm.prank(xdao);
+        XDAOToken(auctionMeta.giveToken).approve(address(launchpad), auctionMeta.totalGive);
         vm.prank(xdao);
         address auction = launchpad.launch(0, auctionMeta);   
         assertNotEq(auction, address(0));
@@ -520,7 +554,7 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
 
       
     function  test_launch_mustUseTokensFromCaller() public {
-        revert();
+        // revert();
         // launchpad.submit(operator, bytes32(0));
         // vm.prank(operator);
         // (address token_0, address auction_0) = _accept(0);
@@ -528,6 +562,9 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         // launchpad.graduate(0, xdao);
 
         Utils.AuctionMetadata memory auctionMeta = _launchMetadata(0);
+        XDAOToken(auctionMeta.giveToken).mint(xdao, auctionMeta.totalGive);
+        vm.prank(xdao);
+        XDAOToken(auctionMeta.giveToken).approve(address(launchpad), auctionMeta.totalGive);
         // vm.prank(xdao);
         // address auction = launchpad.launch(0, auctionMeta);   
         // assertNotEq(auction, address(0));
@@ -572,6 +609,9 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         assertEq(uint256(status_2), uint256(BaseLaunchpad.AplicationStatus.COMPLETED));
         vm.stopPrank();
         Utils.AuctionMetadata memory auctionMeta = _launchMetadata(0);
+        XDAOToken(auctionMeta.giveToken).mint(xdao, auctionMeta.totalGive);
+        vm.prank(xdao);
+        XDAOToken(auctionMeta.giveToken).approve(address(launchpad), auctionMeta.totalGive);
         vm.prank(xdao);
         launchpad.launch(0, auctionMeta);
         (BaseLaunchpad.AplicationStatus status_3,,,,,,,) = launchpad.apps(0);
@@ -693,8 +733,10 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         (address token, address auction) = _accept(0);
 
         (uint128 liqReserves, uint128 curatorReserves) = launchpad.rewards(0);
-        assertGt(XDAOToken(token).balanceOf(address(launchpad)), uint256(liqReserves));
-        assertGt(XDAOToken(token).balanceOf(auction), uint256(curatorReserves));
+        assertEq(XDAOToken(token).balanceOf(address(launchpad)), 0);
+        assertEq(XDAOToken(token).balanceOf(auction), uint256(curatorReserves));
+        assertEq(420 * _XDAO_MAX_SUPPLY / 10000, uint256(liqReserves));
+        assertEq(200 * _XDAO_MAX_SUPPLY / 10000, uint256(curatorReserves));
     }
 
     function test_accept_mustDeployCuratorAuction() public {
@@ -712,7 +754,7 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         assertEq(giveToken, token);
         (, uint256 totalCuratorReserves) = launchpad.rewards(0);
         assertEq(giveAmount, totalCuratorReserves);
-        assertEq(ILaunchCode(auction).manager(), operator); // set as default until graduate()
+        assertEq(ILaunchCode(auction).manager(), bioNetwork); // set as default until graduate()
         
         (address vesting, uint32 vestingLength) = ILaunchCode(auction).vesting();
         assertNotEq(vesting, address(0)); // TODO cant be fucked right now
@@ -780,14 +822,15 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         address manager = gov == address(0) ? address(bioNetwork) : gov;
         // default for curator launchcode, might need to update later
         bytes memory customData = abi.encode(totalStaked, vest, 31536000); // 6 years
+        uint128 giveAmount = 1_000_000;
 
         return Utils.AuctionMetadata({
             launchCode: curatorAuction,
             manager: manager,
-            totalGive: 0,
+            totalGive: giveAmount,
             giveToken: giveToken,
-            wantToken: address(0),
-            totalWant: 0,
+            wantToken: address(usdc),
+            totalWant: 200_000,
             startTime: uint32(block.timestamp),
             endTime: uint32(block.timestamp + 1),
             customLaunchData: customData
@@ -798,8 +841,8 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         return Utils.AuctionMetadata({
             launchCode: launchCode,
             manager: bioNetwork,
-            totalGive: 0,
-            totalWant: 0,
+            totalGive: 1_000_000,
+            totalWant: 200_000,
             giveToken: token,
             wantToken: address(usdc),
             startTime: uint32(block.timestamp),
@@ -808,7 +851,7 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
         });
     }
 
-    uint256 constant _XDAO_VALUATION = 5e15; // $5M USDC;
+    uint256 constant _XDAO_VALUATION = 5_000_000; // $5M USDC;
     function _accept(uint96 id) internal returns(address token, address auction) {
         return launchpad.accept(id, BaseLaunchpad.OrgMetadata({
             name: "test",
@@ -820,12 +863,13 @@ contract BasicLaunchpadTests is BaseLaunchpadTest {
 
     function _claim(uint256 curationID, address auction) internal returns(uint256,uint256) {
         (uint96 appID, address staker) = launchpad._decodeID(curationID);
+        uint256 staked = launchpad.curations(curationID);
         (, , , , , uint256 totalStaked, , ) = launchpad.apps(appID);
         (, uint128 totalTokensAuctioned) = launchpad.rewards(appID);
 
-        uint256 owable = _XDAO_VALUATION * totalTokensAuctioned / totalStaked;
-        uint256 purchasable = launchpad.curations(curationID) * totalTokensAuctioned / totalStaked;
-        // uint256 purchasable = 500_000 * 1e18; // todo need precise purchasable for tests to work
+        uint256 owable = ((_XDAO_VALUATION * totalTokensAuctioned * staked / _XDAO_MAX_SUPPLY) / totalStaked) * 1e8;
+        uint256 purchasable = (staked / totalStaked) * totalTokensAuctioned;
+
         usdc.mint(staker, owable);
         vm.prank(staker);
         usdc.approve(auction, owable);

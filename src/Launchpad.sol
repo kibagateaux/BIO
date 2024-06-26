@@ -171,17 +171,21 @@ contract Launchpad is BaseLaunchpad {
         // _assertAppStatus(apps[appID].status, AplicationStatus.LAUNCHED);
         // since auction is on accept they need to be able to claim before it actually launches()
         // maybe 2 reward stages, ACCEPTED - private auction. LAUNCHED - BIO + public auction discount?
-        _assertAppStatus(apps[appID].status, AplicationStatus.ACCEPTED);
-        
+        // _assertAppStatus(apps[appID].status, AplicationStatus.ACCEPTED);
+        if(msg.sender != curator) revert NotCurator();
+        if(apps[appID].status != AplicationStatus.ACCEPTED 
+            &&  apps[appID].status != AplicationStatus.COMPLETED
+            &&  apps[appID].status != AplicationStatus.LAUNCHED) revert MustClaimOnceLaunched();
         uint256 c = curations[curationID];
-        // if(msg.sender != curator) revert NotCurator();
         if(c == 0) revert RewardsAlreadyClaimed();
+        
 
         _removeCuration(curationID, curator); // wouldnt want to delete if we use later for launchcodes e.g. perpetual discounts to stakers for lifetime of bioDAO
 
         // TODO give BIO emission?
         // $300k to operator = ~16.9M BIO. 30% of supply staking = ~1B BIO. across 5 bioDAOs = ~8% return over duration (~1 yr)
         // uint256 bioReward = operatorBIOReward * c / apps[appID].totalStaked;
+        uint256 bioReward = 0;
         // bio.mint(address(vbio), bioReward);
         // vest BIO linearly for 1 year released daily
         // vbio.createVestingSchedule(curator, block.timestamp, 0, 365 days, 60, true, bioReward);
@@ -274,7 +278,8 @@ contract Launchpad is BaseLaunchpad {
         if(curatorLaunchCode == address(0)) revert LaunchesPaused();
 
         (address xdaoToken, uint256 curatorRewards) = _deployNewToken(appID, meta);
-        bytes memory customData = abi.encode(apps[appID].totalStaked, apps[appID].vestingContract, 31536000); // 6 years in seconds
+        // 189216000
+        bytes memory customData = abi.encode(apps[appID].totalStaked, apps[appID].vestingContract, 189216000); // 189216000 = 6 years in seconds
 
         address auction = _startAuction(appID, true, Utils.AuctionMetadata({
             launchCode: curatorLaunchCode,
@@ -282,10 +287,10 @@ contract Launchpad is BaseLaunchpad {
             totalGive: uint128(curatorRewards),
             wantToken: address(usdc),
             // total usdc tokens sold to curtors. TODO check doesnt exceed uint128 limit
-            totalWant: uint128(meta.valuation * curatorRewards * 1e8 / meta.maxSupply), 
+            totalWant: uint128((meta.valuation * 1e8 * curatorRewards) / meta.maxSupply), 
             startTime: uint32(block.timestamp + 1 days),
             endTime: uint32(block.timestamp + 8 days),
-            // manager: apps[appID].manager, // TODO add manger param to accept()
+            // manager: apps[appID].manager, // TODO add xdao.governance param to accept()
             manager: owner,
             customLaunchData: customData
         }));
@@ -299,7 +304,7 @@ contract Launchpad is BaseLaunchpad {
         // mintable by reactor+manager, L3s, NON-Transferrable until PUBLIC Auction, distribute 6.9% to reactor every time minted
         XDAOToken xdaoToken = new XDAOToken(meta.name, meta.symbol);
         TokenVesting vesting = new TokenVesting(
-            address(bio),
+            address(xdaoToken),
             string.concat("v", meta.name),
             string.concat("v", meta.symbol),
             a.manager

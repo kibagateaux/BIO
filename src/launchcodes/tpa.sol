@@ -80,25 +80,20 @@ contract ProRata is ILaunchCode {
         address launchpad_,
         Utils.AuctionMetadata calldata meta
     ) public {
-        console.log("TPA contract: startTime --", meta.startTime);
-        console.log("TPA contract: giveToken --", meta.giveToken);
-        console.log("TPA contract: totalGive --", meta.totalGive);
-        console.log("TPA contract: wantToken --", meta.wantToken);
-        console.log("TPA contract: manager --", meta.manager);
-        address vesting_;
-        (totalProRataShares, vesting_, _vestingLength) = abi.decode(meta.customLaunchData, (uint128, address, uint32));
-
         if(address(giveToken) != address(0)) revert AlreadyInitialized();
         if(meta.giveToken == address(0)) revert InvalidTokenAddress();
-        if(vesting_ == address(0)) revert InvalidVestingAddress();
         if(launchpad_ == address(0)) revert InvalidLaunchpad();
         if(meta.totalGive == 0) revert InvalidAmount();
         if(meta.manager == address(0)) revert InvalidManagerAddress();
         if(meta.startTime > meta.endTime) revert InvalidEndTime();
         if(meta.startTime < block.timestamp) revert InvalidStartTime();
         if(XDAOToken(meta.giveToken).balanceOf(address(this)) < meta.totalGive) revert InvalidTokenBalance();
+        
+        (totalProRataShares, _vestingContract, _vestingLength) = abi.decode(meta.customLaunchData, (uint128, ITokenVesting, uint32));
+        if(_vestingLength > 315360000) revert InvalidVestLength(); // max 10 year vest
+        if(address(_vestingContract) == address(0)) revert InvalidVestingAddress();
 
-        _vestingContract = ITokenVesting(vesting_);
+        // _vestingContract = ITokenVesting(vesting_);
         giveToken = XDAOToken(meta.giveToken);
         totalGive = meta.totalGive;
         startTime = meta.startTime;
@@ -127,19 +122,19 @@ contract ProRata is ILaunchCode {
     function vesting() public view returns(address, uint32) {
         return (address(_vestingContract), _vestingLength);
     }
-    function auctionToken() external returns(address) {
+    function sellToken() external returns(address) {
         return address(giveToken);
     }
 
-    function totalAuctionable() external returns(uint128) {
+    function totalSellAmount() external returns(uint128) {
         return totalGive;
     }
 
-    function purchaseToken() external returns(address) {
+    function buyToken() external returns(address) {
         return address(wantToken);
     }
 
-    function totalPurchasable() external returns(uint256) {
+    function totalBuyAmount() external returns(uint256) {
         return totalWant;
     }
 
@@ -192,7 +187,7 @@ contract ProRata is ILaunchCode {
         XDAOToken(wantToken).transferFrom(claimer, address(this), wantAmount);
 
         if(!giveToken.transfer(address(_vestingContract), giveAmount)) revert ClaimTransferFailed();
-        _vestingContract.createVestingSchedule(claimer, endTime, 365 days, _vestingLength, 86400, false, giveAmount);
+        _vestingContract.createVestingSchedule(claimer, endTime, 365 days, _vestingLength, 60, false, giveAmount);
 
         // dont track claimable want token, manager can claim all.
 
